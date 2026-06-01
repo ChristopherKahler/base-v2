@@ -69,15 +69,9 @@ pub fn handle(config: &BaseConfig, cwd: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Scan workspace for paul.toml files and ingest into graph. Fail-silent.
+/// Scan all registered workspaces for paul.toml files and ingest into graph. Fail-silent.
 fn ingest_paul_projects(config: &BaseConfig, cwd: &Path) {
-    // Find workspace root (parent of .base/)
-    let workspace_root = crate::config::find_workspace_base(cwd)
-        .and_then(|base| base.parent().map(|p| p.to_path_buf()));
-
-    let Some(root) = workspace_root else { return };
-
-    let projects = crate::extract::paul_toml::scan_paul_projects(&root);
+    let projects = crate::extract::paul_toml::scan_all_workspaces();
     if projects.is_empty() {
         return;
     }
