@@ -108,6 +108,11 @@ pub enum Commands {
         #[arg(long)]
         skip_hooks: bool,
     },
+    /// Scaffold a new workspace: create .base/, write configs, register globally
+    Scaffold {
+        /// Target directory (defaults to cwd)
+        path: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -478,6 +483,17 @@ pub fn run() {
             let carl_path = carl.as_ref().map(std::path::Path::new);
             if let Err(e) = base::install::run(carl_path, skip_hooks) {
                 eprintln!("Install failed: {e}");
+            }
+        }
+
+        // ─── Scaffold ─────────────────────────────────────────
+        Some(Commands::Scaffold { path }) => {
+            let target = path
+                .as_ref()
+                .map(std::path::PathBuf::from)
+                .unwrap_or(cwd.clone());
+            if let Err(e) = base::scaffold::run(&target) {
+                eprintln!("Scaffold failed: {e}");
             }
         }
 
