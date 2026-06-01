@@ -35,6 +35,10 @@ pub fn run(carl_json_path: Option<&Path>, skip_hooks: bool) -> Result<()> {
         migrate_carl(&global_dir, carl_path)?;
     }
 
+    // Step 5: Append BASE CLI section to ~/.claude/CLAUDE.md
+    let claude_md = home.join(".claude").join("CLAUDE.md");
+    append_claude_md(&claude_md)?;
+
     println!("═══════════════════════════════════════");
     println!("✓ Install complete");
     println!("═══════════════════════════════════════\n");
@@ -246,5 +250,80 @@ fn migrate_carl(global_dir: &Path, carl_path: &Path) -> Result<()> {
         }
     }
 
+    Ok(())
+}
+
+// ─── Step 5: CLAUDE.md integration ──────────────────────────
+
+const BASE_CLI_SECTION: &str = r#"
+## BASE CLI — Proactive Context Engine
+
+The `base` binary is on PATH. Use these commands proactively during sessions — they write to a knowledge graph that persists across sessions and surfaces context automatically.
+
+### When to call (proactive, not on-demand)
+
+| Trigger | Command |
+|---------|---------|
+| A decision is made (architectural, process, tooling) | `base decision log --domain X --decision "..." --rationale "..."` |
+| An insight, correction, or lesson emerges | `base learn --text "..." --domain X --type insight\|correction\|decision` |
+| User defines or refines a behavioral rule | `base rule add --domain X --text "..."` |
+| Before making assumptions about prior context | `base recall --keyword "..."` or `base recall --domain X` |
+| User asks to scaffold a new workspace | `base scaffold [path]` |
+
+### Commands reference
+
+- `base learn --text "..." [--domain X] [--type insight]` — structured memory with relational edges
+- `base recall --keyword "..." [--domain X]` — graph-backed relational search
+- `base rule add --domain X --text "..."` — add a rule to a domain (graph-native)
+- `base rule list --domain X` — show rules for a domain
+- `base rule remove --domain X --index N` — remove a rule
+- `base decision log --domain X --decision "..." --rationale "..."` — log a decision
+- `base decision search --keyword "..."` — find prior decisions
+- `base project add --name "..." --status active` — register a project
+- `base task add --project X --name "..."` — add a task
+- `base scaffold [path]` — set up a new workspace
+
+### What happens automatically (via hooks)
+
+- **Session start:** Graph syncs domains, ingests paul.toml projects, runs signals
+- **User prompt:** Matches keywords → injects domain rules + decisions + notes from graph
+- **Pre-tool-use:** Matches file paths → injects relevant domain rules before tool executes
+- **Post-tool-use:** Updates lastActive timestamps in graph
+
+### Architecture
+
+- Rules, decisions, notes, and projects are graph entities with relational edges
+- `domains.toml` defines triggers only (keywords, paths) — rule content lives in the graph
+- `~/.base-gbl/` = global tier, `{workspace}/.base/` = workspace tier
+- Built by Chris Kahler · Chris AI Systems · https://chrisai.cv/skool
+"#;
+
+fn append_claude_md(claude_md_path: &Path) -> Result<()> {
+    print!("5. CLAUDE.md integration ... ");
+
+    if !claude_md_path.exists() {
+        std::fs::write(claude_md_path, BASE_CLI_SECTION.trim_start())?;
+        println!("✓ (created with BASE CLI section)");
+        return Ok(());
+    }
+
+    let content = std::fs::read_to_string(claude_md_path)?;
+
+    if content.contains("## BASE CLI") {
+        println!("already present");
+        return Ok(());
+    }
+
+    let mut new_content = content;
+    if !new_content.ends_with('\n') {
+        new_content.push('\n');
+    }
+    new_content.push_str(BASE_CLI_SECTION);
+
+    let tmp = claude_md_path.with_extension("md.tmp");
+    std::fs::write(&tmp, &new_content)?;
+    std::fs::rename(&tmp, claude_md_path)?;
+
+    println!("✓ (appended BASE CLI section)");
     Ok(())
 }
