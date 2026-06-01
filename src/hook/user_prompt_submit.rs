@@ -130,12 +130,15 @@ pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Res
                 .map(String::from)
                 .collect::<Vec<_>>(),
         );
+        // Count actual injected rules (from graph, not TOML)
+        let injected_rule_count = rules_text.lines().filter(|l| l.starts_with("  ")).count();
+
         if session.is_injected(&domain_def.name, combined_hash) {
             deduped_count += 1;
             loaded_domains.push((
                 domain_def.name.clone(),
                 "dedup".into(),
-                domain_def.rules.len(),
+                injected_rule_count,
             ));
             continue;
         }
@@ -148,7 +151,7 @@ pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Res
         loaded_domains.push((
             domain_def.name.clone(),
             match_reason,
-            domain_def.rules.len(),
+            injected_rule_count,
         ));
 
         output.push_str(&domain_output);
