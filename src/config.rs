@@ -59,6 +59,15 @@ pub struct BaseConfig {
     pub bracket: BracketConfig,
     #[serde(default)]
     pub devmode: DevmodeConfig,
+    #[serde(default)]
+    pub workspace: Vec<WorkspaceEntry>,
+}
+
+// ─── Workspace Registry ─────────────────────────────────────
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct WorkspaceEntry {
+    pub path: String,
 }
 
 // ─── Context Bracket Config ─────────────────────────────────

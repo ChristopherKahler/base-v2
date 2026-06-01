@@ -78,41 +78,27 @@ fn default_groom() -> bool {
 // ─── Scanner ────────────────────────────────────────────────
 
 /// Scan all registered workspaces for .paul/paul.toml files.
-/// Checks every immediate subdirectory of each workspace + the workspace root itself.
-/// Workspaces discovered from: cwd, ~/.claude/settings.json additionalDirectories.
-pub fn scan_all_workspaces() -> Vec<(PathBuf, PaulToml)> {
+/// Workspaces come from [[workspace]] entries in ~/.base-gbl/base.toml + cwd.
+/// Checks root, every immediate subdirectory, and one level deeper.
+pub fn scan_all_workspaces(config: &crate::config::BaseConfig) -> Vec<(PathBuf, PaulToml)> {
     let mut results = Vec::new();
     let mut scanned = std::collections::HashSet::new();
 
-    // Collect workspace roots: cwd + additionalDirectories from settings.json
-    let mut workspace_roots = Vec::new();
+    let mut workspace_roots: Vec<PathBuf> = config
+        .workspace
+        .iter()
+        .map(|w| PathBuf::from(&w.path))
+        .collect();
 
-    // Current workspace (from cwd → walk up to .base/)
+    // Also include cwd's workspace if not already registered
     if let Ok(cwd) = std::env::current_dir()
         && let Some(base_dir) = crate::config::find_workspace_base(&cwd)
-            && let Some(root) = base_dir.parent() {
-                workspace_roots.push(root.to_path_buf());
-            }
-
-    // Registered workspaces from ~/.claude/settings.json additionalDirectories
-    if let Some(home) = dirs::home_dir() {
-        let settings_path = home.join(".claude").join("settings.json");
-        if let Ok(content) = std::fs::read_to_string(&settings_path)
-            && let Ok(settings) = serde_json::from_str::<serde_json::Value>(&content)
-                && let Some(dirs) = settings
-                    .get("permissions")
-                    .and_then(|p| p.get("additionalDirectories"))
-                    .and_then(|d| d.as_array())
-                {
-                    for dir in dirs {
-                        if let Some(path_str) = dir.as_str() {
-                            workspace_roots.push(PathBuf::from(path_str));
-                        }
-                    }
-                }
+        && let Some(root) = base_dir.parent()
+    {
+        workspace_roots.push(root.to_path_buf());
     }
 
-    // Scan each workspace: root itself + every immediate subdirectory (recursive 1 level)
+    // Scan each workspace: root + every subdirectory + one level deeper
     for root in &workspace_roots {
         if !root.is_dir() || !scanned.insert(root.clone()) {
             continue;
@@ -128,7 +114,7 @@ pub fn scan_all_workspaces() -> Vec<(PathBuf, PaulToml)> {
                 if path.is_dir() {
                     results.extend(try_load_paul_toml(&path));
 
-                    // Also check one level deeper (apps/project-name/, clients/client-name/)
+                    // One level deeper
                     if let Ok(sub_entries) = std::fs::read_dir(&path) {
                         for sub_entry in sub_entries.flatten() {
                             if sub_entry.path().is_dir() {

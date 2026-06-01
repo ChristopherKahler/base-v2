@@ -71,7 +71,7 @@ pub fn handle(config: &BaseConfig, cwd: &Path) -> Result<()> {
 
 /// Scan all registered workspaces for paul.toml files and ingest into graph. Fail-silent.
 fn ingest_paul_projects(config: &BaseConfig, cwd: &Path) {
-    let projects = crate::extract::paul_toml::scan_all_workspaces();
+    let projects = crate::extract::paul_toml::scan_all_workspaces(config);
     if projects.is_empty() {
         return;
     }
