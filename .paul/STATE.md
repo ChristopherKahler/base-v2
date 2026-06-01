@@ -63,10 +63,10 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-06-01 11:34
-Stopped at: Phase 5 UNIFY complete, transition done
-Next action: Run /paul:plan for Phase 6 (CARL Absorption)
-Resume file: .paul/phases/05-signal-layer/05-01-SUMMARY.md
+Last session: 2026-06-01 11:46
+Stopped at: Phase 5 complete, paused before Phase 6 (CARL Absorption needs design headroom)
+Next action: Run /paul:resume → Phase 6 planning. Consider /paul:discuss or /paul:research-phase first (ROADMAP flags "Research: Likely").
+Resume file: .paul/HANDOFF-2026-06-01.md
 
 ---
 *STATE.md — Updated after every significant action*
