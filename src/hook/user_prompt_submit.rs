@@ -35,6 +35,20 @@ pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Res
         session.clear_dedup();
     }
 
+    // Check for *COMMAND before domain matching
+    let commands = crate::command::load_commands(cwd);
+    if let Some(cmd) = crate::command::match_command(&prompt, &commands) {
+        let cmd_output = crate::command::format_command_output(cmd);
+        if !cmd_output.is_empty() {
+            // Star commands bypass domain matching — they're explicit invocations
+            if let Some(ref base_dir) = base_dir {
+                let _ = session.save(base_dir);
+            }
+            print!("{cmd_output}");
+            return Ok(());
+        }
+    }
+
     // Gather active file paths from graph (if available)
     let active_paths = gather_active_paths(config, cwd);
 
