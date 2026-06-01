@@ -39,7 +39,27 @@ pub fn add(
     );
 
     crud::load_and_mutate(cwd, ns, &sparql)?;
+
+    // Auto-create domain trigger with path matching (filesystem-first, no keywords by default)
+    auto_create_domain(cwd, name, &project_path)?;
+
+    // Link project to its domain in the graph
+    let domain_slug = crud::slugify(name);
+    let domain_iri = crud::build_iri(ns, "domain", &domain_slug);
+    let link_sparql = format!(
+        "INSERT DATA {{ GRAPH <{graph}> {{ <{iri}> {p}:hasDomain <{domain_iri}> }} }}"
+    );
+    let _ = crud::load_and_mutate(cwd, ns, &link_sparql);
+
     Ok(slug)
+}
+
+/// Auto-create a domain trigger entry in the nearest domains.toml.
+/// Default: path-based matching. No keywords unless user adds them later.
+fn auto_create_domain(cwd: &Path, project_name: &str, project_path: &str) -> Result<()> {
+    // Add a path trigger via the existing add_trigger mechanism
+    crate::domain::add_trigger(cwd, project_name, None, Some(project_path))?;
+    Ok(())
 }
 
 pub fn list(cwd: &Path, ns: &NamespaceConfig) -> Result<()> {
