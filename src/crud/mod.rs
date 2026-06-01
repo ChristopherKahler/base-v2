@@ -3,6 +3,7 @@ pub mod entity;
 pub mod goal;
 pub mod note;
 pub mod project;
+pub mod rule;
 pub mod reminder;
 pub mod task;
 

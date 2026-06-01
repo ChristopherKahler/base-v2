@@ -94,6 +94,11 @@ pub enum Commands {
         #[arg(long)]
         domain: Option<String>,
     },
+    /// Manage rules in the graph (add, list, remove)
+    Rule {
+        #[command(subcommand)]
+        action: RuleAction,
+    },
     /// Install base globally: build, symlink, create ~/.base-gbl, wire hooks
     Install {
         /// Path to carl.json for decision migration
@@ -231,6 +236,29 @@ pub enum ReminderAction {
     List,
     /// Remove a reminder (hard delete)
     Remove { slug: String },
+}
+
+#[derive(Subcommand)]
+pub enum RuleAction {
+    /// Add a rule to a domain in the graph
+    Add {
+        #[arg(long)]
+        domain: String,
+        #[arg(long)]
+        text: String,
+    },
+    /// List rules for a domain from the graph
+    List {
+        #[arg(long)]
+        domain: String,
+    },
+    /// Remove a rule by index from a domain
+    Remove {
+        #[arg(long)]
+        domain: String,
+        #[arg(long)]
+        index: u32,
+    },
 }
 
 #[derive(Subcommand)]
@@ -397,6 +425,25 @@ pub fn run() {
                         stats.domains, stats.rules, stats.decisions
                     ),
                     Err(e) => eprintln!("Domain sync failed: {e}"),
+                }
+            }
+        },
+
+        // ─── Rule ─────────────────────────────────────────
+        Some(Commands::Rule { action }) => match action {
+            RuleAction::Add { domain: name, text } => {
+                match crud::rule::add(&cwd, &config.namespace, &name, &text) {
+                    Ok(index) => println!("Rule {index} added to domain '{name}'"),
+                    Err(e) => eprintln!("Failed: {e}"),
+                }
+            }
+            RuleAction::List { domain: name } => {
+                let _ = crud::rule::list(&cwd, &config.namespace, &name);
+            }
+            RuleAction::Remove { domain: name, index } => {
+                match crud::rule::remove(&cwd, &config.namespace, &name, index) {
+                    Ok(()) => println!("Rule {index} removed from domain '{name}'"),
+                    Err(e) => eprintln!("Failed: {e}"),
                 }
             }
         },
