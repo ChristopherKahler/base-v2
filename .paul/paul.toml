@@ -1,0 +1,21 @@
+name = "base-v2"
+version = "0.1.0"
+status = "active"
+path = "apps/base-v2"
+tags = ["rust", "framework", "context-engine"]
+
+[milestone]
+name = "v0.1 Proactive Context Engine"
+version = "0.1.0"
+status = "in_progress"
+
+[phase]
+number = 6
+name = "CARL Absorption"
+status = "in_progress"
+
+[loop]
+position = "IDLE"
+
+[satellite]
+groom = true

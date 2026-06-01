@@ -201,7 +201,20 @@ pub fn format_devmode_block(
 ) -> String {
     let mut out = String::new();
     out.push_str("\n⚠️ DEVMODE=true ⚠️\n");
-    out.push_str("MANDATORY: Append a DEVMODE block at the end of EVERY response.\n\n");
+    out.push_str("============================================================\n");
+    out.push_str("MANDATORY: Append a DEVMODE block at the end of EVERY response.\n");
+    out.push_str("NEVER skip it. NEVER forget it. NEVER omit it for any reason.\n");
+    out.push_str("NEVER fabricate data in the block — only report what you actually received.\n\n");
+    out.push_str("Format EXACTLY (keep under 8 lines, no rationale, no prose):\n");
+    out.push_str("---\n```\n");
+    out.push_str("🔧 DEVMODE\n");
+    out.push_str("Bracket: [X] (prompt N)\n");
+    out.push_str("Loaded: domain1 (N rules), domain2 (dedup)\n");
+    out.push_str("Available: domain3, domain4, ...\n");
+    out.push_str("Dedup: N skipped\n");
+    out.push_str("Tools: tools used this response, or 'none'\n");
+    out.push_str("```\n---\n");
+    out.push_str("============================================================\n\n");
 
     // Bracket info
     out.push_str(&format!(
