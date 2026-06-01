@@ -1,6 +1,7 @@
 pub mod decision;
 pub mod entity;
 pub mod goal;
+pub mod note;
 pub mod project;
 pub mod reminder;
 pub mod task;

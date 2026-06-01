@@ -85,6 +85,26 @@ pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Res
             continue;
         }
 
+        // Query notes linked to this domain (skip in lean mode)
+        let notes_text = if lean_mode {
+            String::new()
+        } else if let Some(ref store) = graph_store {
+            let domain_slug = crud::slugify(&domain_def.name);
+            let domain_iri = crud::build_iri(&config.namespace, "domain", &domain_slug);
+            let notes = crate::crud::note::notes_for_domain(store, &config.namespace, &domain_iri);
+            if notes.is_empty() {
+                String::new()
+            } else {
+                let mut out = format!("[{} NOTES]\n", domain_def.name);
+                for (note_type, text) in &notes {
+                    out.push_str(&format!("  - {note_type}: {text}\n"));
+                }
+                out
+            }
+        } else {
+            String::new()
+        };
+
         // Build combined output for this domain
         let mut domain_output = String::new();
         if !rules_text.is_empty() {
@@ -95,6 +115,12 @@ pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Res
                 domain_output.push('\n');
             }
             domain_output.push_str(&neighborhood_text);
+        }
+        if !notes_text.is_empty() {
+            if !domain_output.is_empty() {
+                domain_output.push('\n');
+            }
+            domain_output.push_str(&notes_text);
         }
 
         // Dedup: hash combined output (rules + neighborhood), skip if unchanged

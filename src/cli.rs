@@ -60,6 +60,33 @@ pub enum Commands {
         #[command(subcommand)]
         action: DomainAction,
     },
+    /// Graph-backed structured memory
+    Learn {
+        /// The memory text to store
+        #[arg(long)]
+        text: String,
+        /// Note type: insight, correction, decision, commitment, shift
+        #[arg(long, default_value = "insight")]
+        r#type: String,
+        /// Link to a domain
+        #[arg(long)]
+        domain: Option<String>,
+        /// Link to a project
+        #[arg(long)]
+        project: Option<String>,
+        /// Link to an entity (person, org)
+        #[arg(long)]
+        entity: Option<String>,
+    },
+    /// Search notes by keyword and/or domain
+    Recall {
+        /// Search text in note content
+        #[arg(long)]
+        keyword: Option<String>,
+        /// Filter by linked domain
+        #[arg(long)]
+        domain: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -357,6 +384,31 @@ pub fn run() {
                 }
             }
         },
+
+        // ─── Learn ────────────────────────────────────────
+        Some(Commands::Learn { text, r#type, domain, project, entity }) => {
+            match crud::note::learn(
+                &cwd,
+                &config.namespace,
+                &text,
+                &r#type,
+                domain.as_deref(),
+                project.as_deref(),
+                entity.as_deref(),
+            ) {
+                Ok(slug) => println!("Learned: '{text}' (slug: {slug}, type: {})", r#type),
+                Err(e) => eprintln!("Failed: {e}"),
+            }
+        }
+
+        // ─── Recall ─────────────────────────────────────────
+        Some(Commands::Recall { keyword, domain }) => {
+            if keyword.is_none() && domain.is_none() {
+                eprintln!("Provide --keyword and/or --domain");
+                return;
+            }
+            let _ = crud::note::recall(&cwd, &config.namespace, keyword.as_deref(), domain.as_deref());
+        }
 
         None => eprintln!("No command provided. Run `base --help` for usage."),
     }
