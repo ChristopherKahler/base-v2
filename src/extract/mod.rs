@@ -1,5 +1,6 @@
 pub mod frontmatter;
 pub mod paul_json;
+pub mod paul_toml;
 
 use std::path::Path;
 use std::time::UNIX_EPOCH;

@@ -1,0 +1,33 @@
+# paul.toml — PAUL project manifest for BASE graph ingestion
+# Place at .paul/paul.toml in any PAUL-managed project.
+# base hook session-start scans for these and registers/updates in the graph.
+
+# ─── Identity ────────────────────────────────────────────────
+name = "project-name"           # Human-readable project name
+version = "0.0.0"               # Semver
+status = "active"               # active | paused | complete | blocked
+path = "apps/project-name"      # Relative to workspace root
+
+# ─── Milestone ───────────────────────────────────────────────
+[milestone]
+name = "v0.1 MVP"
+version = "0.1.0"
+status = "in_progress"          # in_progress | complete
+
+# ─── Phase ───────────────────────────────────────────────────
+[phase]
+number = 1
+name = "Foundation"
+status = "in_progress"          # not_started | planning | in_progress | complete
+
+# ─── Loop ────────────────────────────────────────────────────
+[loop]
+plan = "01-01"                  # Current plan ID (null-like: omit field if idle)
+position = "APPLY"              # IDLE | PLAN | APPLY | UNIFY
+
+# ─── Tags (for domain association) ───────────────────────────
+tags = ["rust", "framework"]    # Used for graph edges to domains/concepts
+
+# ─── Satellite ───────────────────────────────────────────────
+[satellite]
+groom = true                    # Include in base groom health checks

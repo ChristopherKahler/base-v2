@@ -13,6 +13,12 @@ pub fn handle(config: &BaseConfig, cwd: &Path) -> Result<()> {
         crate::domain::session::SessionState::clear(&base_dir);
     }
 
+    // Auto-sync domains to graph
+    crate::hook::user_prompt_submit::ensure_domain_sync_pub(config, cwd);
+
+    // Scan and ingest paul.toml projects into graph (idempotent)
+    ingest_paul_projects(config, cwd);
+
     // Try signals first (Phase 5) — primary injection source
     if let Ok(signal_output) = crate::signal::run_signals(cwd, config)
         && !signal_output.is_empty() {
@@ -61,6 +67,33 @@ pub fn handle(config: &BaseConfig, cwd: &Path) -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Scan workspace for paul.toml files and ingest into graph. Fail-silent.
+fn ingest_paul_projects(config: &BaseConfig, cwd: &Path) {
+    // Find workspace root (parent of .base/)
+    let workspace_root = crate::config::find_workspace_base(cwd)
+        .and_then(|base| base.parent().map(|p| p.to_path_buf()));
+
+    let Some(root) = workspace_root else { return };
+
+    let projects = crate::extract::paul_toml::scan_paul_projects(&root);
+    if projects.is_empty() {
+        return;
+    }
+
+    // Ingest silently — errors to stderr, never block session start
+    match crate::extract::paul_toml::ingest_paul_projects(cwd, &config.namespace, &projects) {
+        Ok(stats) => {
+            if stats.registered > 0 {
+                eprintln!(
+                    "base: ingested {} paul project(s) into graph",
+                    stats.registered
+                );
+            }
+        }
+        Err(e) => eprintln!("base: paul.toml ingest failed: {e}"),
+    }
 }
 
 /// Discover TriG files from global and workspace tiers.
