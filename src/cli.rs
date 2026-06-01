@@ -205,6 +205,12 @@ pub enum DomainAction {
     List,
     /// Show a specific domain's full configuration
     Get { name: String },
+    /// Sync domains/rules from domains.toml into the graph. Optionally migrate decisions from carl.json.
+    Sync {
+        /// Path to carl.json for one-time decision migration
+        #[arg(long)]
+        carl: Option<String>,
+    },
 }
 
 pub fn run() {
@@ -340,6 +346,16 @@ pub fn run() {
             }
             DomainAction::List => domain::list_domains(&cwd),
             DomainAction::Get { name } => domain::get_domain(&cwd, &name),
+            DomainAction::Sync { carl } => {
+                let carl_path = carl.as_ref().map(std::path::Path::new);
+                match domain::sync::sync_domains_to_graph(&config, &cwd, carl_path) {
+                    Ok(stats) => println!(
+                        "Domain sync complete: {} domains, {} rules, {} decisions",
+                        stats.domains, stats.rules, stats.decisions
+                    ),
+                    Err(e) => eprintln!("Domain sync failed: {e}"),
+                }
+            }
         },
 
         None => eprintln!("No command provided. Run `base --help` for usage."),

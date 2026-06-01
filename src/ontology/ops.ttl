@@ -193,12 +193,27 @@ ops:ruleText      rdf:type rdf:Property ;
 ops:triggerKeyword rdf:type rdf:Property ;
                    rdfs:domain ops:Domain ;
                    rdfs:range xsd:string ;
-                   rdfs:comment "A keyword that activates this domain" .
+                   rdfs:comment "A keyword that activates this domain (legacy, prefer promptKeyword/fileKeyword)" .
+
+ops:promptKeyword rdf:type rdf:Property ;
+                  rdfs:domain ops:Domain ;
+                  rdfs:range xsd:string ;
+                  rdfs:comment "A user-configured keyword matched against prompt text" .
+
+ops:fileKeyword   rdf:type rdf:Property ;
+                  rdfs:domain ops:Domain ;
+                  rdfs:range xsd:string ;
+                  rdfs:comment "A code-oriented keyword matched against file content on tool-use" .
 
 ops:triggerPath   rdf:type rdf:Property ;
                   rdfs:domain ops:Domain ;
                   rdfs:range xsd:string ;
                   rdfs:comment "A path glob that activates this domain" .
+
+ops:hasDecision   rdf:type rdf:Property ;
+                  rdfs:domain ops:Domain ;
+                  rdfs:range ops:Decision ;
+                  rdfs:comment "Domain → decision linkage" .
 
 ops:path          rdf:type rdf:Property ;
                   rdfs:range xsd:string ;

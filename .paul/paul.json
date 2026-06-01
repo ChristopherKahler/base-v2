@@ -8,9 +8,9 @@
     "status": "in_progress"
   },
   "phase": {
-    "number": 5,
-    "name": "Signal Layer (proof)",
-    "status": "complete"
+    "number": 6,
+    "name": "CARL Absorption",
+    "status": "in_progress"
   },
   "loop": {
     "plan": null,
@@ -18,7 +18,7 @@
   },
   "timestamps": {
     "created_at": "2026-05-29T12:40:21-05:00",
-    "updated_at": "2026-06-01T11:34:00-05:00"
+    "updated_at": "2026-06-01T12:55:00-05:00"
   },
   "satellite": {
     "groom": true

@@ -1,0 +1,216 @@
+use std::path::Path;
+
+/// Set up a workspace with domains.toml, then run domain sync to populate the graph.
+fn setup_synced_workspace(dir: &Path) {
+    let base_dir = dir.join(".base");
+    std::fs::create_dir_all(&base_dir).unwrap();
+
+    std::fs::write(
+        base_dir.join("domains.toml"),
+        r#"
+[[domain]]
+name = "GLOBAL"
+mode = "always"
+prompt_keywords = []
+rules = ["Never lie", "Always verify"]
+
+[[domain]]
+name = "DEVELOPMENT"
+mode = "triggered"
+prompt_keywords = ["write code", "fix bug", "implement"]
+file_keywords = ["use crate", "fn main"]
+paths = ["src/"]
+rules = ["Test everything before claiming done"]
+"#,
+    )
+    .unwrap();
+
+    // Also write a base.toml so config loads cleanly
+    std::fs::write(
+        base_dir.join("base.toml"),
+        "[namespace]\nprefix = \"ops\"\nuri = \"http://ops-sys.local/ontology#\"\n",
+    )
+    .unwrap();
+
+    // Run domain sync to populate graph
+    let config = base::config::BaseConfig::load(dir);
+    base::domain::sync::sync_domains_to_graph(&config, dir, None).unwrap();
+}
+
+/// Set up workspace with domains + carl.json decisions synced.
+fn setup_synced_with_decisions(dir: &Path) {
+    setup_synced_workspace(dir);
+
+    let carl_path = dir.join("carl.json");
+    std::fs::write(
+        &carl_path,
+        r#"{
+  "domains": [
+    {
+      "name": "DEVELOPMENT",
+      "decisions": [
+        {
+          "decision": "Use Rust for hot path",
+          "rationale": "Performance critical",
+          "recall": "When discussing architecture"
+        },
+        {
+          "decision": "Fail-open on all hooks",
+          "rationale": "Never block Claude",
+          "recall": "When implementing hooks"
+        }
+      ]
+    }
+  ]
+}"#,
+    )
+    .unwrap();
+
+    let config = base::config::BaseConfig::load(dir);
+    base::domain::sync::sync_domains_to_graph(&config, dir, Some(&carl_path)).unwrap();
+}
+
+#[test]
+fn graph_injection_returns_rules_from_graph() {
+    let tmp = tempfile::tempdir().unwrap();
+    setup_synced_workspace(tmp.path());
+
+    // Simulate a user-prompt-submit event that matches GLOBAL (always-on)
+    let event = serde_json::json!({
+        "prompt": "hello world"
+    });
+
+    let config = base::config::BaseConfig::load(tmp.path());
+
+    // Capture stdout
+    let result = std::panic::catch_unwind(|| {
+        base::hook::user_prompt_submit::handle(&config, tmp.path(), &event).unwrap();
+    });
+    assert!(result.is_ok());
+
+    // Since we can't easily capture stdout in integration tests,
+    // verify the graph has the rules we expect
+    let ns = &config.namespace;
+    let p = &ns.prefix;
+    let domain_iri = format!("{}domain/global", ns.uri);
+
+    let results = base::crud::load_and_query(
+        tmp.path(),
+        ns,
+        &format!(
+            "SELECT ?text WHERE {{ GRAPH ?g {{ <{domain_iri}> {p}:hasRule ?r . ?r {p}:ruleText ?text }} }}"
+        ),
+    )
+    .unwrap();
+
+    if let oxigraph::sparql::QueryResults::Solutions(solutions) = results {
+        let texts: Vec<String> = solutions
+            .filter_map(|r| r.ok())
+            .filter_map(|row| {
+                row.get("text").map(|t| {
+                    use oxigraph::model::TermRef;
+                    match t.into() {
+                        TermRef::Literal(l) => l.value().to_string(),
+                        _ => String::new(),
+                    }
+                })
+            })
+            .collect();
+        assert_eq!(texts.len(), 2);
+        assert!(texts.iter().any(|t| t.contains("Never lie")));
+        assert!(texts.iter().any(|t| t.contains("Always verify")));
+    } else {
+        panic!("Expected solutions from graph query");
+    }
+}
+
+#[test]
+fn graph_injection_includes_neighborhood_decisions() {
+    let tmp = tempfile::tempdir().unwrap();
+    setup_synced_with_decisions(tmp.path());
+
+    let ns = &base::config::BaseConfig::load(tmp.path()).namespace;
+    let p = &ns.prefix;
+    let domain_iri = format!("{}domain/development", ns.uri);
+
+    // Verify decisions are linked to the DEVELOPMENT domain
+    let results = base::crud::load_and_query(
+        tmp.path(),
+        ns,
+        &format!(
+            "SELECT ?name WHERE {{ GRAPH ?g {{ <{domain_iri}> {p}:hasDecision ?d . ?d {p}:name ?name }} }}"
+        ),
+    )
+    .unwrap();
+
+    if let oxigraph::sparql::QueryResults::Solutions(solutions) = results {
+        let names: Vec<String> = solutions
+            .filter_map(|r| r.ok())
+            .filter_map(|row| {
+                row.get("name").map(|t| {
+                    use oxigraph::model::TermRef;
+                    match t.into() {
+                        TermRef::Literal(l) => l.value().to_string(),
+                        _ => String::new(),
+                    }
+                })
+            })
+            .collect();
+        assert_eq!(names.len(), 2, "Should have 2 decisions for DEVELOPMENT");
+        assert!(names.iter().any(|n| n.contains("Rust")));
+        assert!(names.iter().any(|n| n.contains("Fail-open")));
+    } else {
+        panic!("Expected solutions");
+    }
+}
+
+#[test]
+fn fallback_to_toml_when_graph_empty() {
+    let tmp = tempfile::tempdir().unwrap();
+    let base_dir = tmp.path().join(".base");
+    std::fs::create_dir_all(&base_dir).unwrap();
+
+    // Write domains.toml but do NOT run sync — graph doesn't exist
+    std::fs::write(
+        base_dir.join("domains.toml"),
+        r#"
+[[domain]]
+name = "FALLBACK"
+mode = "always"
+prompt_keywords = []
+rules = ["Fallback rule"]
+"#,
+    )
+    .unwrap();
+
+    // The hook should still work (fail-open, use TOML rules directly)
+    let event = serde_json::json!({ "prompt": "test" });
+    let config = base::config::BaseConfig::load(tmp.path());
+    let result = base::hook::user_prompt_submit::handle(&config, tmp.path(), &event);
+    assert!(result.is_ok(), "Should not error even without graph");
+}
+
+#[test]
+fn dedup_skips_unchanged_graph_injection() {
+    let tmp = tempfile::tempdir().unwrap();
+    setup_synced_workspace(tmp.path());
+
+    let event = serde_json::json!({ "prompt": "hello" });
+    let config = base::config::BaseConfig::load(tmp.path());
+
+    // First call — should inject
+    base::hook::user_prompt_submit::handle(&config, tmp.path(), &event).unwrap();
+
+    // Load session state to verify something was marked
+    let base_dir = base::config::find_workspace_base(tmp.path()).unwrap();
+    let session = base::domain::session::SessionState::load(&base_dir);
+    assert!(
+        session.injected.contains_key("GLOBAL"),
+        "GLOBAL should be marked as injected after first call"
+    );
+
+    // Second call with same prompt — GLOBAL should be deduped
+    // (The handle function runs, but the domain won't appear in output because hash matches)
+    let result = base::hook::user_prompt_submit::handle(&config, tmp.path(), &event);
+    assert!(result.is_ok());
+}

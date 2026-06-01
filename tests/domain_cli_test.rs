@@ -27,11 +27,11 @@ fn add_keyword_trigger_to_existing_domain() {
     let domains = base::domain::load_domains(tmp.path());
     let dev = domains.iter().find(|d| d.name == "dev").unwrap();
     assert!(
-        dev.keywords.contains(&"write code".to_string()),
+        dev.prompt_keywords.contains(&"write code".to_string()),
         "Original keyword preserved"
     );
     assert!(
-        dev.keywords.contains(&"fix bug".to_string()),
+        dev.prompt_keywords.contains(&"fix bug".to_string()),
         "New keyword added"
     );
 }
@@ -46,7 +46,7 @@ fn add_trigger_creates_new_domain() {
     let domains = base::domain::load_domains(tmp.path());
     let review = domains.iter().find(|d| d.name == "review").unwrap();
     assert_eq!(review.mode, "triggered");
-    assert!(review.keywords.contains(&"audit".to_string()));
+    assert!(review.prompt_keywords.contains(&"audit".to_string()));
 }
 
 #[test]
@@ -72,7 +72,7 @@ fn add_trigger_no_duplicate_keywords() {
     let domains = base::domain::load_domains(tmp.path());
     let dev = domains.iter().find(|d| d.name == "dev").unwrap();
     let count = dev
-        .keywords
+        .prompt_keywords
         .iter()
         .filter(|k| *k == "write code")
         .count();

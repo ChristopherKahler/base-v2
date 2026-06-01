@@ -41,9 +41,9 @@ fn is_matched(domain: &DomainDef, prompt_lower: &str, active_paths: &[String]) -
         }
     }
 
-    // Keyword match: any keyword substring in prompt
+    // Keyword match: any prompt_keyword substring in prompt text
     let keyword_hit = domain
-        .keywords
+        .prompt_keywords
         .iter()
         .any(|kw| prompt_lower.contains(&kw.to_lowercase()));
 
@@ -65,7 +65,8 @@ mod tests {
         DomainDef {
             name: name.into(),
             mode: mode.into(),
-            keywords: keywords.iter().map(|s| s.to_string()).collect(),
+            prompt_keywords: keywords.iter().map(|s| s.to_string()).collect(),
+            file_keywords: Vec::new(),
             paths: Vec::new(),
             exclude: Vec::new(),
             sticky: false,

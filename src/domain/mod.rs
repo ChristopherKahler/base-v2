@@ -1,5 +1,6 @@
 pub mod matcher;
 pub mod session;
+pub mod sync;
 
 use std::path::Path;
 
@@ -12,8 +13,13 @@ pub struct DomainDef {
     pub name: String,
     #[serde(default = "default_mode")]
     pub mode: String, // "always" | "triggered"
+    /// Keywords matched against user prompt text (natural language, user-configured).
+    /// Backward-compatible: legacy `keywords` field deserializes here via alias.
+    #[serde(default, alias = "keywords")]
+    pub prompt_keywords: Vec<String>,
+    /// Keywords matched against file content on tool-use (code-oriented, system-suggestable).
     #[serde(default)]
-    pub keywords: Vec<String>,
+    pub file_keywords: Vec<String>,
     #[serde(default)]
     pub paths: Vec<String>,
     #[serde(default)]
@@ -110,7 +116,8 @@ pub fn add_trigger(
         file.domain.push(DomainDef {
             name: domain_name.to_string(),
             mode: "triggered".to_string(),
-            keywords: Vec::new(),
+            prompt_keywords: Vec::new(),
+            file_keywords: Vec::new(),
             paths: Vec::new(),
             exclude: Vec::new(),
             sticky: false,
@@ -120,9 +127,9 @@ pub fn add_trigger(
     };
 
     if let Some(kw) = keyword
-        && !domain.keywords.contains(&kw.to_string())
+        && !domain.prompt_keywords.contains(&kw.to_string())
     {
-        domain.keywords.push(kw.to_string());
+        domain.prompt_keywords.push(kw.to_string());
     }
     if let Some(p) = path
         && !domain.paths.contains(&p.to_string())
@@ -146,14 +153,15 @@ pub fn list_domains(cwd: &Path) {
         eprintln!("No domains configured.");
         return;
     }
-    println!("| Domain | Mode | Keywords | Paths | Rules |");
-    println!("|--------|------|----------|-------|-------|");
+    println!("| Domain | Mode | Prompt KW | File KW | Paths | Rules |");
+    println!("|--------|------|-----------|---------|-------|-------|");
     for d in &domains {
         println!(
-            "| {} | {} | {} | {} | {} |",
+            "| {} | {} | {} | {} | {} | {} |",
             d.name,
             d.mode,
-            d.keywords.len(),
+            d.prompt_keywords.len(),
+            d.file_keywords.len(),
             d.paths.len(),
             d.rules.len(),
         );
@@ -168,8 +176,11 @@ pub fn get_domain(cwd: &Path, name: &str) {
             println!("Domain: {}", d.name);
             println!("Mode: {}", d.mode);
             println!("Sticky: {}", d.sticky);
-            if !d.keywords.is_empty() {
-                println!("Keywords: {}", d.keywords.join(", "));
+            if !d.prompt_keywords.is_empty() {
+                println!("Prompt Keywords: {}", d.prompt_keywords.join(", "));
+            }
+            if !d.file_keywords.is_empty() {
+                println!("File Keywords: {}", d.file_keywords.join(", "));
             }
             if !d.paths.is_empty() {
                 println!("Paths: {}", d.paths.join(", "));
