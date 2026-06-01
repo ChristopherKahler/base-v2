@@ -65,7 +65,7 @@ PLAN ──▶ APPLY ──▶ UNIFY
 - AST/code extraction (open-ontologies integration) — deferred to future plan.
 
 ### Git State
-Last commit: 6368a6b
+Last commit: 0452ba2
 Branch: main
 Feature branches merged: none
 
