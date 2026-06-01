@@ -5,21 +5,22 @@
 See: .paul/PROJECT.md (updated 2026-06-01)
 
 **Core value:** Proactive, deterministic context-injection engine — suppression, not detection. The gate that stays silent until the one thing that matters changes.
-**Current focus:** Phase 2 complete. Ready for Phase 3 planning (Write Commands / CRUD).
+**Current focus:** Phase 3 complete. Ready for Phase 4 planning (Extraction Layer).
 
 ## Current Position
 
 Milestone: v0.1 Proactive Context Engine
-Phase: 2 of 8 (Domain Matcher + Rule Injection) — Complete ✓
-Plan: 02-01 complete (PLAN → APPLY → UNIFY closed)
-Status: Phase 2 done. Ready for Phase 3 PLAN.
-Last activity: 2026-06-01 09:40 — UNIFY closed loop on Plan 02-01, phase transition complete
+Phase: 3 of 8 (Write Commands) — Complete ✓
+Plan: 03-02 complete (PLAN → APPLY → UNIFY closed). Both plans done.
+Status: Phase 3 done. Ready for Phase 4 PLAN.
+Last activity: 2026-06-01 10:24 — UNIFY closed loop on Plan 03-02, phase transition complete
 
 Progress:
-- Milestone: [███░░░░░░░] 33%
+- Milestone: [████░░░░░░] 44%
 - Phase 0: [██████████] 100% ✓
 - Phase 1: [██████████] 100% ✓
 - Phase 2: [██████████] 100% ✓
+- Phase 3: [██████████] 100% ✓
 
 ## Loop Position
 
@@ -52,7 +53,7 @@ PLAN ──▶ APPLY ──▶ UNIFY
 None.
 
 ### Git State
-Last commit: bfe0a6a
+Last commit: 94ca89e
 Branch: main
 Feature branches merged: none
 
@@ -61,10 +62,10 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-06-01 09:40
-Stopped at: Phase 2 UNIFY complete, transition done
-Next action: Run /paul:plan for Phase 3 (Write Commands / CRUD)
-Resume file: .paul/phases/02-domain-matcher/02-01-SUMMARY.md
+Last session: 2026-06-01 10:24
+Stopped at: Phase 3 UNIFY complete, transition done
+Next action: Run /paul:plan for Phase 4 (Extraction Layer)
+Resume file: .paul/phases/03-write-commands/03-02-SUMMARY.md
 
 ---
 *STATE.md — Updated after every significant action*

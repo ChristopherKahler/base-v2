@@ -1,0 +1,115 @@
+use oxigraph::sparql::QueryResults;
+
+use base::config::NamespaceConfig;
+use base::crud;
+
+fn default_ns() -> NamespaceConfig {
+    NamespaceConfig::default()
+}
+
+#[test]
+fn add_task_linked_to_project() {
+    let tmp = tempfile::tempdir().unwrap();
+    let ns = default_ns();
+
+    // Create project first
+    crud::project::add(tmp.path(), &ns, "MyProject", "active", None).unwrap();
+
+    // Add task
+    let slug = crud::task::add(tmp.path(), &ns, "myproject", "Fix Auth", Some("high")).unwrap();
+    assert_eq!(slug, "myproject.fix-auth");
+
+    // Verify task exists and is linked to project
+    let trig_path = tmp.path().join(".base").join("graph.trig");
+    let store = base::store::load_graph(&trig_path).unwrap();
+
+    let sparql = format!(
+        "PREFIX {p}: <{u}>\n\
+         ASK {{ GRAPH ?g {{\n\
+           <{u}task/myproject.fix-auth> a {p}:Task ;\n\
+             {p}:name \"Fix Auth\" ;\n\
+             {p}:status \"active\" ;\n\
+             {p}:priority \"high\" .\n\
+           <{u}project/myproject> {p}:hasTask <{u}task/myproject.fix-auth> .\n\
+         }} }}",
+        p = ns.prefix,
+        u = ns.uri,
+    );
+    match store.query(&sparql).unwrap() {
+        QueryResults::Boolean(yes) => assert!(yes, "Task should exist and be linked to project"),
+        _ => panic!("Expected boolean"),
+    }
+}
+
+#[test]
+fn list_tasks_by_project() {
+    let tmp = tempfile::tempdir().unwrap();
+    let ns = default_ns();
+
+    crud::project::add(tmp.path(), &ns, "Proj", "active", None).unwrap();
+    crud::task::add(tmp.path(), &ns, "proj", "Task A", None).unwrap();
+    crud::task::add(tmp.path(), &ns, "proj", "Task B", None).unwrap();
+
+    let result = crud::task::list(tmp.path(), &ns, Some("proj"));
+    assert!(result.is_ok());
+}
+
+#[test]
+fn mark_task_done() {
+    let tmp = tempfile::tempdir().unwrap();
+    let ns = default_ns();
+
+    crud::project::add(tmp.path(), &ns, "Proj", "active", None).unwrap();
+    crud::task::add(tmp.path(), &ns, "proj", "DoThis", None).unwrap();
+    crud::task::done(tmp.path(), &ns, "proj.dothis").unwrap();
+
+    // Verify status is completed
+    let trig_path = tmp.path().join(".base").join("graph.trig");
+    let store = base::store::load_graph(&trig_path).unwrap();
+
+    let sparql = format!(
+        "PREFIX {p}: <{u}>\n\
+         ASK {{ GRAPH ?g {{ <{u}task/proj.dothis> {p}:status \"completed\" }} }}",
+        p = ns.prefix,
+        u = ns.uri,
+    );
+    match store.query(&sparql).unwrap() {
+        QueryResults::Boolean(yes) => assert!(yes, "Task should be completed"),
+        _ => panic!("Expected boolean"),
+    }
+
+    // Verify updatedAt set
+    let sparql_ts = format!(
+        "PREFIX {p}: <{u}>\n\
+         ASK {{ GRAPH ?g {{ <{u}task/proj.dothis> {p}:updatedAt ?ts }} }}",
+        p = ns.prefix,
+        u = ns.uri,
+    );
+    match store.query(&sparql_ts).unwrap() {
+        QueryResults::Boolean(yes) => assert!(yes, "updatedAt should be set"),
+        _ => panic!("Expected boolean"),
+    }
+}
+
+#[test]
+fn add_task_default_priority() {
+    let tmp = tempfile::tempdir().unwrap();
+    let ns = default_ns();
+
+    crud::project::add(tmp.path(), &ns, "Proj", "active", None).unwrap();
+    crud::task::add(tmp.path(), &ns, "proj", "NoPri", None).unwrap();
+
+    let trig_path = tmp.path().join(".base").join("graph.trig");
+    let store = base::store::load_graph(&trig_path).unwrap();
+
+    let sparql = format!(
+        "PREFIX {p}: <{u}>\n\
+         ASK {{ GRAPH ?g {{ <{u}task/proj.nopri> {p}:priority \"medium\" }} }}",
+        p = ns.prefix,
+        u = ns.uri,
+    );
+    match store.query(&sparql).unwrap() {
+        QueryResults::Boolean(yes) => assert!(yes, "Default priority should be medium"),
+        _ => panic!("Expected boolean"),
+    }
+}

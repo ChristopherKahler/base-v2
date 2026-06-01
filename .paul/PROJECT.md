@@ -38,12 +38,13 @@ The operator's entire context — projects, tasks, people, tools, frameworks, de
 - ✓ **Hooks fail-open** — errors → stderr, exit 0, empty stdout — Phase 1
 - ✓ **Namespace portability** — prefix + URI runtime-configurable via base.toml — Phase 1
 - ✓ **Deterministic domain matching** — domains.toml with keyword/path/exclude/sticky triggers, multi-signal matcher — Phase 2
+- ✓ **Two write paths** — CLI commands (CRUD) for 6 entity types via SPARQL UPDATE, IRI-scoped — Phase 3
 
 ### Active (In Progress)
-Phase 3 (Write Commands) — CRUD for projects, tasks, decisions, entities.
+Phase 4 (Extraction Layer) — `base sync` with idempotent extraction + AST ontology parsing.
 
 ### Planned (Next)
-Phase 4 (Extraction Layer) — `base sync` with idempotent extraction + AST ontology parsing.
+Phase 5 (Signal Layer) — parameterized SPARQL signals, suppression layer, firehose comparison.
 
 ### Out of Scope
 - BASE writing PAUL or other foreign framework state — read-only indexing only.
@@ -122,4 +123,4 @@ Phase 4 (Extraction Layer) — `base sync` with idempotent extraction + AST onto
 
 ---
 *PROJECT.md — Updated when requirements or context change*
-*Last updated: 2026-06-01 — Phase 2 (Domain Matcher) complete*
+*Last updated: 2026-06-01 — Phase 3 (Write Commands) complete*
