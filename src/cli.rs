@@ -50,7 +50,11 @@ pub enum Commands {
         action: ReminderAction,
     },
     /// Sync file-owned data into the graph
-    Sync,
+    Sync {
+        /// Only re-extract files changed since last sync
+        #[arg(long)]
+        incremental: bool,
+    },
     /// Manage domain matching rules
     Domain {
         #[command(subcommand)]
@@ -310,7 +314,17 @@ pub fn run() {
         },
 
         // ─── Sync ────────────────────────────────────────
-        Some(Commands::Sync) => eprintln!("sync — not yet implemented"),
+        Some(Commands::Sync { incremental }) => {
+            match base::extract::sync(&cwd, &config, incremental) {
+                Ok(report) => {
+                    println!(
+                        "Sync complete: {} scanned, {} extracted, {} skipped",
+                        report.scanned, report.extracted, report.skipped
+                    );
+                }
+                Err(e) => eprintln!("Sync failed: {e}"),
+            }
+        }
 
         // ─── Domain ──────────────────────────────────────
         Some(Commands::Domain { action }) => match action {

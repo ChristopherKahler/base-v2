@@ -5,22 +5,23 @@
 See: .paul/PROJECT.md (updated 2026-06-01)
 
 **Core value:** Proactive, deterministic context-injection engine — suppression, not detection. The gate that stays silent until the one thing that matters changes.
-**Current focus:** Phase 3 complete. Ready for Phase 4 planning (Extraction Layer).
+**Current focus:** Phase 4 complete. Ready for Phase 5 planning (Signal Layer).
 
 ## Current Position
 
 Milestone: v0.1 Proactive Context Engine
-Phase: 3 of 8 (Write Commands) — Complete ✓
-Plan: 03-02 complete (PLAN → APPLY → UNIFY closed). Both plans done.
-Status: Phase 3 done. Ready for Phase 4 PLAN.
-Last activity: 2026-06-01 10:24 — UNIFY closed loop on Plan 03-02, phase transition complete
+Phase: 4 of 8 (Extraction Layer) — Complete ✓
+Plan: 04-01 complete (PLAN → APPLY → UNIFY closed)
+Status: Phase 4 done. Ready for Phase 5 PLAN.
+Last activity: 2026-06-01 10:56 — UNIFY closed loop on Plan 04-01, phase transition complete
 
 Progress:
-- Milestone: [████░░░░░░] 44%
+- Milestone: [█████░░░░░] 55%
 - Phase 0: [██████████] 100% ✓
 - Phase 1: [██████████] 100% ✓
 - Phase 2: [██████████] 100% ✓
 - Phase 3: [██████████] 100% ✓
+- Phase 4: [██████████] 100% ✓
 
 ## Loop Position
 
@@ -50,10 +51,10 @@ PLAN ──▶ APPLY ──▶ UNIFY
 - domains.toml TOML format with `[[domain]]` tables — clean, operator-readable, same tiered-override pattern.
 
 ### Deferred Issues
-None.
+- AST/code extraction (open-ontologies integration) — discussed, deferred to future plan. Extraction infrastructure supports adding new extractor modules.
 
 ### Git State
-Last commit: 94ca89e
+Last commit: 80b2c43
 Branch: main
 Feature branches merged: none
 
@@ -62,10 +63,10 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-06-01 10:24
-Stopped at: Phase 3 UNIFY complete, transition done
-Next action: Run /paul:plan for Phase 4 (Extraction Layer)
-Resume file: .paul/phases/03-write-commands/03-02-SUMMARY.md
+Last session: 2026-06-01 10:56
+Stopped at: Phase 4 UNIFY complete, transition done
+Next action: Run /paul:plan for Phase 5 (Signal Layer)
+Resume file: .paul/phases/04-extraction-layer/04-01-SUMMARY.md
 
 ---
 *STATE.md — Updated after every significant action*

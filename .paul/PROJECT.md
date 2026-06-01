@@ -39,12 +39,13 @@ The operator's entire context — projects, tasks, people, tools, frameworks, de
 - ✓ **Namespace portability** — prefix + URI runtime-configurable via base.toml — Phase 1
 - ✓ **Deterministic domain matching** — domains.toml with keyword/path/exclude/sticky triggers, multi-signal matcher — Phase 2
 - ✓ **Two write paths** — CLI commands (CRUD) for 6 entity types via SPARQL UPDATE, IRI-scoped — Phase 3
+- ✓ **Idempotent extraction** — `base sync` with frontmatter + paul.json extractors, mtime incremental, configurable patterns — Phase 4
 
 ### Active (In Progress)
-Phase 4 (Extraction Layer) — `base sync` with idempotent extraction + AST ontology parsing.
+Phase 5 (Signal Layer) — parameterized SPARQL signals, suppression layer, firehose comparison.
 
 ### Planned (Next)
-Phase 5 (Signal Layer) — parameterized SPARQL signals, suppression layer, firehose comparison.
+Phase 6 (CARL Absorption) — port remaining CARL mechanisms, retire Python hooks.
 
 ### Out of Scope
 - BASE writing PAUL or other foreign framework state — read-only indexing only.
@@ -123,4 +124,4 @@ Phase 5 (Signal Layer) — parameterized SPARQL signals, suppression layer, fire
 
 ---
 *PROJECT.md — Updated when requirements or context change*
-*Last updated: 2026-06-01 — Phase 3 (Write Commands) complete*
+*Last updated: 2026-06-01 — Phase 4 (Extraction Layer) complete*

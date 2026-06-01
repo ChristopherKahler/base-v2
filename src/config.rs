@@ -51,6 +51,39 @@ impl Default for NamespaceConfig {
 pub struct BaseConfig {
     #[serde(default)]
     pub namespace: NamespaceConfig,
+    #[serde(default)]
+    pub sync: SyncConfig,
+}
+
+// ─── Sync Config ─────────────────────────────────────────────
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct SyncConfig {
+    #[serde(default = "default_include")]
+    pub include: Vec<String>,
+    #[serde(default = "default_exclude")]
+    pub exclude: Vec<String>,
+}
+
+fn default_include() -> Vec<String> {
+    vec!["**/*.md".into(), "**/paul.json".into()]
+}
+fn default_exclude() -> Vec<String> {
+    vec![
+        "node_modules/".into(),
+        "target/".into(),
+        ".git/".into(),
+        ".base/".into(),
+    ]
+}
+
+impl Default for SyncConfig {
+    fn default() -> Self {
+        Self {
+            include: default_include(),
+            exclude: default_exclude(),
+        }
+    }
 }
 
 impl BaseConfig {

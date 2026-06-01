@@ -155,6 +155,7 @@ SELECT ?name WHERE {
             prefix: "myns".into(),
             uri: "http://example.com/ns#".into(),
         },
+        ..BaseConfig::default()
     };
 
     let result = session_start::handle(&config, tmp.path());

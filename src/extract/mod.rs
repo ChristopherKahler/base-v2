@@ -1,0 +1,179 @@
+pub mod frontmatter;
+pub mod paul_json;
+
+use std::path::Path;
+use std::time::UNIX_EPOCH;
+
+use anyhow::{Context, Result};
+
+use crate::config::{BaseConfig, NamespaceConfig};
+use crate::crud;
+
+/// Report from a sync operation.
+pub struct SyncReport {
+    pub scanned: usize,
+    pub extracted: usize,
+    pub skipped: usize,
+}
+
+/// Run sync: scan workspace files, extract metadata to graph.
+pub fn sync(cwd: &Path, config: &BaseConfig, incremental: bool) -> Result<SyncReport> {
+    let ns = &config.namespace;
+    let (store, trig_path) = crud::load_workspace_store(cwd)?;
+    let ws_slug = crud::workspace_slug(cwd);
+    let graph_iri = crud::workspace_graph_iri(ns, &ws_slug);
+    let prefixes = crud::prefixes(ns);
+
+    let mut report = SyncReport {
+        scanned: 0,
+        extracted: 0,
+        skipped: 0,
+    };
+
+    // Walk workspace for matching files
+    let files = discover_files(cwd, &config.sync);
+
+    for file_path in &files {
+        report.scanned += 1;
+
+        let rel_path = file_path
+            .strip_prefix(cwd)
+            .unwrap_or(file_path)
+            .to_string_lossy()
+            .to_string();
+
+        let file_iri = file_iri_from_path(ns, &rel_path);
+
+        // Incremental: check mtime vs lastExtracted
+        if incremental
+            && let Some(true) = is_up_to_date(&store, &file_iri, file_path, ns)
+        {
+            report.skipped += 1;
+            continue;
+        }
+
+        // Route to extractor by file type
+        let content = match std::fs::read_to_string(file_path) {
+            Ok(c) => c,
+            Err(_) => {
+                report.skipped += 1;
+                continue;
+            }
+        };
+
+        let triples = if rel_path.ends_with("paul.json") {
+            paul_json::extract(&content, &rel_path, ns)
+        } else if rel_path.ends_with(".md") {
+            frontmatter::extract(&content, &rel_path, ns)
+        } else {
+            None
+        };
+
+        let Some(triples) = triples else {
+            report.skipped += 1;
+            continue;
+        };
+
+        // DELETE existing triples for this file IRI (idempotent re-extraction)
+        let delete_sparql = format!(
+            "{prefixes}\nDELETE WHERE {{ GRAPH <{graph_iri}> {{ <{file_iri}> ?p ?o }} }}"
+        );
+        let _ = store.update(&delete_sparql);
+
+        // INSERT fresh triples
+        let now = crud::now_iso();
+        let p = &ns.prefix;
+        let mut insert_body = String::new();
+        for (pred, val) in &triples {
+            insert_body.push_str(&format!("    <{file_iri}> {pred} {val} .\n"));
+        }
+        insert_body.push_str(&format!(
+            "    <{file_iri}> {p}:lastExtracted \"{now}\"^^xsd:dateTime .\n"
+        ));
+
+        let insert_sparql = format!(
+            "{prefixes}\nINSERT DATA {{\n  GRAPH <{graph_iri}> {{\n{insert_body}  }}\n}}"
+        );
+        store
+            .update(&insert_sparql)
+            .with_context(|| format!("inserting triples for {rel_path}"))?;
+
+        report.extracted += 1;
+    }
+
+    crate::store::write_back(&store, &trig_path)?;
+    Ok(report)
+}
+
+/// Build a file IRI from a relative path.
+pub fn file_iri_from_path(ns: &NamespaceConfig, rel_path: &str) -> String {
+    let slug = rel_path
+        .replace(['/', '\\', '.'], "-")
+        .to_lowercase();
+    format!("{}document/{}", ns.uri, slug)
+}
+
+/// Discover files matching include patterns, excluding exclude patterns.
+fn discover_files(cwd: &Path, sync_config: &crate::config::SyncConfig) -> Vec<std::path::PathBuf> {
+    let mut files = Vec::new();
+
+    for pattern in &sync_config.include {
+        let full_pattern = format!("{}/{}", cwd.display(), pattern);
+        if let Ok(paths) = glob::glob(&full_pattern) {
+            for entry in paths.flatten() {
+                // Check excludes
+                let rel = entry
+                    .strip_prefix(cwd)
+                    .unwrap_or(&entry)
+                    .to_string_lossy()
+                    .to_string();
+                let excluded = sync_config
+                    .exclude
+                    .iter()
+                    .any(|ex| rel.contains(ex.trim_end_matches('/')));
+                if !excluded && entry.is_file() {
+                    files.push(entry);
+                }
+            }
+        }
+    }
+
+    files.sort();
+    files.dedup();
+    files
+}
+
+/// Check if a file is up-to-date (mtime <= lastExtracted).
+fn is_up_to_date(
+    store: &oxigraph::store::Store,
+    file_iri: &str,
+    file_path: &Path,
+    ns: &NamespaceConfig,
+) -> Option<bool> {
+    // Get file mtime
+    let metadata = std::fs::metadata(file_path).ok()?;
+    let mtime = metadata.modified().ok()?;
+    let mtime_secs = mtime.duration_since(UNIX_EPOCH).ok()?.as_secs();
+
+    // Query lastExtracted from graph
+    let p = &ns.prefix;
+    let sparql = format!(
+        "{}\nSELECT ?ts WHERE {{ GRAPH ?g {{ <{file_iri}> {p}:lastExtracted ?ts }} }}",
+        crud::prefixes(ns)
+    );
+
+    if let Ok(oxigraph::sparql::QueryResults::Solutions(solutions)) = store.query(&sparql) {
+        for row in solutions.flatten() {
+            if let Some(term) = row.get("ts") {
+                let ts_str = crud::term_display(term.into());
+                // Parse ISO 8601 timestamp to compare
+                if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(&ts_str) {
+                    let extracted_secs = dt.timestamp() as u64;
+                    return Some(mtime_secs <= extracted_secs);
+                }
+            }
+        }
+    }
+
+    Some(false) // No lastExtracted found → needs extraction
+}

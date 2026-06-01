@@ -90,6 +90,7 @@ dependencies = [
  "chrono",
  "clap",
  "dirs",
+ "glob",
  "oxigraph",
  "serde",
  "serde_json",
