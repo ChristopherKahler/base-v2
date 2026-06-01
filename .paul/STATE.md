@@ -5,32 +5,32 @@
 See: .paul/PROJECT.md (updated 2026-06-01)
 
 **Core value:** Proactive, deterministic context-injection engine — suppression, not detection. The gate that stays silent until the one thing that matters changes.
-**Current focus:** Binary is LIVE. Phase 6 substantially complete (3 PAUL plans + extensive post-plan work). CARL retired. Ready for Phase 7 or Phase 6 closure.
+**Current focus:** Phase 6 COMPLETE. Binary live, CARL retired, v1 hooks/MCP removed, full productization done. Ready for Phase 7 (v1 Migration).
 
 ## Current Position
 
 Milestone: v0.1 Proactive Context Engine
-Phase: 6 of 8 (CARL Absorption) — Substantially Complete
-Plan: 06-03 closed via PAUL + 12 post-plan commits (install, scaffold, rule CRUD, pre-tool-use, paul.toml, mandatory edges)
-Status: Binary installed and live at ~/.local/bin/base. All 4 hooks wired. CARL retired.
-Last activity: 2026-06-01 15:48 — Handoff after full system live testing
+Phase: 6 of 8 (CARL Absorption) — Complete ✓
+Plan: 3 PAUL plans + 25 post-plan commits. Phase 6 fully shipped.
+Status: Product live. All hooks wired. Operator profile, star commands, AST extraction, MOP, mandatory edges all shipped.
+Last activity: 2026-06-01 17:00 — Final handoff after full productization
 
 Progress:
-- Milestone: [████████░░] 80%
+- Milestone: [█████████░] 90%
 - Phase 0: [██████████] 100% ✓
 - Phase 1: [██████████] 100% ✓
 - Phase 2: [██████████] 100% ✓
 - Phase 3: [██████████] 100% ✓
 - Phase 4: [██████████] 100% ✓
 - Phase 5: [██████████] 100% ✓
-- Phase 6: [█████████░] 95% (CARL retired, all features shipped, formal plan 06-04 skipped)
+- Phase 6: [██████████] 100% ✓
 
 ## Loop Position
 
 Current loop state:
 ```
 PLAN ──▶ APPLY ──▶ UNIFY
-  ✓        ✓        ✓     [Plan 06-03 closed. Post-plan work committed directly.]
+  ✓        ✓        ✓     [Phase 6 complete]
 ```
 
 ## Accumulated Context
@@ -65,19 +65,20 @@ PLAN ──▶ APPLY ──▶ UNIFY
 - AST/code extraction (open-ontologies integration) — deferred to future plan.
 
 ### Git State
-Last commit: 5a68997
+Last commit: 07c8cfc
 Branch: main
 Feature branches merged: none
 
 ### Blockers/Concerns
-None.
+- base sync frontmatter extraction has a bug (errors on SUMMARY.md files)
+- base install can't copy over itself when the running binary IS the target
 
 ## Session Continuity
 
-Last session: 2026-06-01 15:48
-Stopped at: System live — binary installed, all hooks wired, CARL retired, tested with real prompts
-Next action: Close Phase 6 formally, OR update PAUL to emit paul.toml, OR start Phase 7 (v1 migration)
-Resume file: .paul/HANDOFF-2026-06-01-session2.md
+Last session: 2026-06-01 17:00
+Stopped at: Phase 6 complete. Full productization done. System live and tested.
+Next action: Close Phase 6 transition → Phase 7 (v1 Migration), OR port PAUL to emit paul.toml, OR fix sync bug
+Resume file: .paul/HANDOFF-2026-06-01-final.md
 
 ---
 *STATE.md — Updated after every significant action*

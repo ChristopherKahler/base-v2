@@ -10,7 +10,7 @@
   "phase": {
     "number": 6,
     "name": "CARL Absorption",
-    "status": "in_progress"
+    "status": "complete"
   },
   "loop": {
     "plan": null,
