@@ -2,22 +2,23 @@
 
 ## Project Reference
 
-See: .paul/PROJECT.md (updated 2026-05-31)
+See: .paul/PROJECT.md (updated 2026-06-01)
 
 **Core value:** Proactive, deterministic context-injection engine — suppression, not detection. The gate that stays silent until the one thing that matters changes.
-**Current focus:** Phase 0 complete. Ready for Phase 1 planning (Hook Engine).
+**Current focus:** Phase 1 complete. Ready for Phase 2 planning (Domain Matcher + Rule Injection).
 
 ## Current Position
 
 Milestone: v0.1 Proactive Context Engine
-Phase: 0 of 8 (Rust Scaffold + Ontology) — Complete ✓
-Plan: 00-01 complete (PLAN → APPLY → UNIFY closed)
-Status: Phase 0 done. Ready for Phase 1 PLAN.
-Last activity: 2026-05-31 21:57 — UNIFY closed loop on Plan 00-01
+Phase: 1 of 8 (Hook Engine) — Complete ✓
+Plan: 01-01 complete (PLAN → APPLY → UNIFY closed)
+Status: Phase 1 done. Ready for Phase 2 PLAN.
+Last activity: 2026-06-01 09:08 — UNIFY closed loop on Plan 01-01, phase transition complete
 
 Progress:
-- Milestone: [█░░░░░░░░░] 11%
+- Milestone: [██░░░░░░░░] 22%
 - Phase 0: [██████████] 100% ✓
+- Phase 1: [██████████] 100% ✓
 
 ## Loop Position
 
@@ -30,7 +31,7 @@ PLAN ──▶ APPLY ──▶ UNIFY
 ## Accumulated Context
 
 ### Decisions
-13 decisions (12 design + 1 from Phase 0 build):
+17 decisions (12 design + 1 Phase 0 build + 4 Phase 1 planning):
 - Rust single binary with embedded Oxigraph — CLI + hook handler, no MCP server.
 - TTL-is-the-store — TriG text files, no separate database. Git-native.
 - IRI-keyed idempotent extraction is the structural fix for v1 rot.
@@ -39,6 +40,10 @@ PLAN ──▶ APPLY ──▶ UNIFY
 - Sub-prefixes for TriG authoring (`proj:`, `ws:`, `g:`) — `/` invalid in prefix local names.
 - Library + binary crate split (lib.rs for public modules, main.rs for CLI).
 - anyhow for error handling at this stage.
+- Namespace URI + prefix are runtime-configurable via `base.toml` — nothing hardcoded to Chris's setup.
+- SPARQL queries are operator-configurable via `queries.toml` with tiered override (embedded defaults → global → workspace).
+- Session-end nudge dropped — hook unreliable (users close VS Code). Nudge behavior deferred to signal layer at session-start.
+- No dirty-file tracking — graph self-manages via `mtime` vs `ops:lastExtracted` comparison. The graph's own metadata IS the state tracker.
 
 ### Deferred Issues
 None.
@@ -48,10 +53,10 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-05-31 21:57
-Stopped at: Phase 0 UNIFY complete
-Next action: Run /paul:plan for Phase 1 (Hook Engine)
-Resume file: .paul/phases/00-rust-scaffold-ontology/00-01-SUMMARY.md
+Last session: 2026-06-01 09:08
+Stopped at: Phase 1 UNIFY complete, transition done
+Next action: Run /paul:plan for Phase 2 (Domain Matcher + Rule Injection)
+Resume file: .paul/phases/01-hook-engine/01-01-SUMMARY.md
 
 ---
 *STATE.md — Updated after every significant action*

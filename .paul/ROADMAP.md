@@ -8,14 +8,14 @@ Build the BASE v2 proactive context engine from the Rust scaffold up: define the
 
 **v0.1 Proactive Context Engine** (v0.1.0)
 Status: In progress
-Phases: 0 of 9 complete
+Phases: 2 of 9 complete
 
 ## Phases
 
 | Phase | Name | Plans | Status | Completed |
 |-------|------|-------|--------|-----------|
 | 0 | Rust Scaffold + Ontology | 01 | Complete ✓ | 2026-05-31 |
-| 1 | Hook Engine | TBD | Not started | - |
+| 1 | Hook Engine | 01 | Complete ✓ | 2026-06-01 |
 | 2 | Domain Matcher + Rule Injection | TBD | Not started | - |
 | 3 | Write Commands (CRUD) | TBD | Not started | - |
 | 4 | Extraction Layer | TBD | Not started | - |

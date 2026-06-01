@@ -2,17 +2,31 @@ use std::path::Path;
 
 use oxigraph::sparql::QueryResults;
 
+use base::config::NamespaceConfig;
+
 #[test]
 fn test_vocabulary_loads() {
     let store = oxigraph::store::Store::new().unwrap();
-    base::ontology::load_vocabulary(&store).unwrap();
+    base::ontology::load_vocabulary(&store, &NamespaceConfig::default()).unwrap();
 
-    // Verify all 11 classes exist
+    // Verify all 16 classes exist
     let classes = [
-        "Project", "App", "Framework", "TrackingProject",
-        "Task", "Decision", "Entity", "Person", "Organization",
-        "Goal", "Reminder", "Workspace", "Domain", "Rule",
-        "Document", "PaulProject",
+        "Project",
+        "App",
+        "Framework",
+        "TrackingProject",
+        "Task",
+        "Decision",
+        "Entity",
+        "Person",
+        "Organization",
+        "Goal",
+        "Reminder",
+        "Workspace",
+        "Domain",
+        "Rule",
+        "Document",
+        "PaulProject",
     ];
     for class in &classes {
         let sparql = format!(
@@ -26,11 +40,24 @@ fn test_vocabulary_loads() {
 
     // Verify core predicates exist
     let predicates = [
-        "name", "description", "status", "priority",
-        "lastActive", "createdAt", "updatedAt",
-        "supersedes", "supersededBy", "belongsTo",
-        "hasDomain", "hasRule", "hasGoal", "hasTask", "hasProject",
-        "blockedBy", "nextAction", "revenue",
+        "name",
+        "description",
+        "status",
+        "priority",
+        "lastActive",
+        "createdAt",
+        "updatedAt",
+        "supersedes",
+        "supersededBy",
+        "belongsTo",
+        "hasDomain",
+        "hasRule",
+        "hasGoal",
+        "hasTask",
+        "hasProject",
+        "blockedBy",
+        "nextAction",
+        "revenue",
     ];
     for pred in &predicates {
         let sparql = format!(
@@ -64,9 +91,7 @@ fn test_workspace_graph_loads() {
             let names: Vec<String> = solutions
                 .map(|s| {
                     let s = s.unwrap();
-                    s.get("name")
-                        .unwrap()
-                        .to_string()
+                    s.get("name").unwrap().to_string()
                 })
                 .collect();
             assert!(
@@ -101,7 +126,10 @@ fn test_round_trip() {
     let store2 = base::store::load_graph(&tmp_path).unwrap();
     let count_after = store2.len().unwrap();
 
-    assert_eq!(count_before, count_after, "Triple count should survive round-trip");
+    assert_eq!(
+        count_before, count_after,
+        "Triple count should survive round-trip"
+    );
 
     // Same query should return same results
     let sparql = r#"
@@ -160,7 +188,8 @@ fn test_cross_tier_query() {
                 .collect();
             assert!(!rows.is_empty(), "Cross-tier query should return results");
             assert!(
-                rows.iter().any(|(p, g)| p.contains("CaseGate") && g.contains("North Star")),
+                rows.iter()
+                    .any(|(p, g)| p.contains("CaseGate") && g.contains("North Star")),
                 "CaseGate should link to North Star goal, got: {rows:?}"
             );
         }
@@ -180,13 +209,22 @@ fn test_atomic_write_no_corrupt() {
     base::store::write_back(&store, &out_path).unwrap();
 
     // Verify file exists
-    assert!(out_path.exists(), "Output file should exist after write_back");
+    assert!(
+        out_path.exists(),
+        "Output file should exist after write_back"
+    );
 
     // Verify temp file was cleaned up (renamed away)
     let tmp_file = out_path.with_extension("trig.tmp");
-    assert!(!tmp_file.exists(), "Temp file should not remain after atomic rename");
+    assert!(
+        !tmp_file.exists(),
+        "Temp file should not remain after atomic rename"
+    );
 
     // Verify file is valid TriG by re-parsing
     let store2 = base::store::load_graph(&out_path).unwrap();
-    assert!(store2.len().unwrap() > 0, "Re-parsed file should contain triples");
+    assert!(
+        store2.len().unwrap() > 0,
+        "Re-parsed file should contain triples"
+    );
 }

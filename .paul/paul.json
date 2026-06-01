@@ -3,13 +3,13 @@
   "name": "base-v2",
   "version": "0.0.0",
   "milestone": {
-    "name": "None",
-    "version": "0.0.0",
-    "status": "not_started"
+    "name": "v0.1 Proactive Context Engine",
+    "version": "0.1.0",
+    "status": "in_progress"
   },
   "phase": {
-    "number": 0,
-    "name": "Rust Scaffold + Ontology",
+    "number": 1,
+    "name": "Hook Engine",
     "status": "complete"
   },
   "loop": {
@@ -18,7 +18,7 @@
   },
   "timestamps": {
     "created_at": "2026-05-29T12:40:21-05:00",
-    "updated_at": "2026-05-31T21:57:00-05:00"
+    "updated_at": "2026-06-01T09:08:00-05:00"
   },
   "satellite": {
     "groom": true

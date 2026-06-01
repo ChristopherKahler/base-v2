@@ -1,0 +1,51 @@
+## Default queries — shipped with the binary.
+## Operators override by creating ~/.base-gbl/queries.toml (global)
+## or {workspace}/.base/queries.toml (workspace).
+## Override by name; append new queries with unique names.
+## {{prefix}} is replaced at runtime with the configured namespace prefix.
+
+[[query]]
+name = "active-projects"
+description = "Active projects"
+order = 1
+format = "table"
+sparql = """
+SELECT ?name ?status ?next WHERE {
+  GRAPH ?g {
+    ?p a {{prefix}}:Project ;
+       {{prefix}}:name ?name ;
+       {{prefix}}:status "active" .
+    OPTIONAL { ?p {{prefix}}:nextAction ?next }
+  }
+}
+"""
+
+[[query]]
+name = "blocked-items"
+description = "Blocked items"
+order = 2
+format = "list"
+sparql = """
+SELECT ?name ?blocker WHERE {
+  GRAPH ?g {
+    ?entity {{prefix}}:name ?name ;
+            {{prefix}}:blockedBy ?blocker .
+  }
+}
+"""
+
+[[query]]
+name = "recent-activity"
+description = "Recent activity (last 10)"
+order = 3
+format = "list"
+sparql = """
+SELECT ?name ?lastActive WHERE {
+  GRAPH ?g {
+    ?entity {{prefix}}:name ?name ;
+            {{prefix}}:lastActive ?lastActive .
+  }
+}
+ORDER BY DESC(?lastActive)
+LIMIT 10
+"""

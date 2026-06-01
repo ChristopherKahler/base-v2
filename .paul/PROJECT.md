@@ -14,8 +14,8 @@ The operator's entire context — projects, tasks, people, tools, frameworks, de
 |-----------|-------|
 | Type | Application (framework / internal tooling) |
 | Version | 0.0.0 |
-| Status | Initializing |
-| Last Updated | 2026-05-31 |
+| Status | Building |
+| Last Updated | 2026-06-01 |
 
 ## Requirements
 
@@ -32,13 +32,17 @@ The operator's entire context — projects, tasks, people, tools, frameworks, de
 - **CARL absorption** — rules, decisions, domains become graph entities; Python CARL retires.
 
 ### Validated (Shipped)
-None yet.
+- ✓ **Rust single binary** — CLI + hook handler + embedded Oxigraph — Phase 0
+- ✓ **TTL-is-the-store** — TriG text files per tier, atomic write-back — Phase 0
+- ✓ **Pre-filtered signal hooks** — session-start runs parameterized SPARQL, configurable queries — Phase 1
+- ✓ **Hooks fail-open** — errors → stderr, exit 0, empty stdout — Phase 1
+- ✓ **Namespace portability** — prefix + URI runtime-configurable via base.toml — Phase 1
 
 ### Active (In Progress)
-None yet.
+Phase 2 (Domain Matcher + Rule Injection) — deterministic domain matching via domains.toml.
 
 ### Planned (Next)
-Phase 0 (Rust Scaffold + Ontology) — `cargo init`, `ops:` vocabulary, IRI scheme, basic CLI. See ROADMAP.md.
+Phase 3 (Write Commands) — CRUD for projects, tasks, decisions, entities.
 
 ### Out of Scope
 - BASE writing PAUL or other foreign framework state — read-only indexing only.
@@ -75,6 +79,10 @@ Phase 0 (Rust Scaffold + Ontology) — `cargo init`, `ops:` vocabulary, IRI sche
 | TTL-is-the-store (Flavor B) | Git-native, trivial at operator scale, no binary blobs | 2026-05-31 | Active |
 | Hooks call CLI directly | `base hook <event>` stdin/stdout; no wrapper scripts | 2026-05-31 | Active |
 | CARL absorbed fully into BASE v2 | Rules/decisions/domains become graph entities; Python CARL retires | 2026-05-31 | Active |
+| Namespace URI + prefix runtime-configurable | Product is for other operators — nothing hardcoded to Chris's setup | 2026-06-01 | Active |
+| SPARQL queries operator-configurable | queries.toml with tiered override (embedded → global → workspace) | 2026-06-01 | Active |
+| Session-end nudge dropped | Hook unreliable (users close VS Code); nudge via signal layer instead | 2026-06-01 | Active |
+| No dirty-file tracking | Graph self-manages via mtime vs ops:lastExtracted; zero external state | 2026-06-01 | Active |
 
 ## Success Metrics
 
@@ -94,7 +102,9 @@ Phase 0 (Rust Scaffold + Ontology) — `cargo init`, `ops:` vocabulary, IRI sche
 | Persistence | TriG text files | `.base-gbl/graph.trig`, `{workspace}/.base/graph.trig` |
 | CLI framework | clap | Subcommands + hook mode |
 | Serialization | serde / serde_json | Event parsing, structured output |
-| Config | toml crate | `domains.toml`, namespace config |
+| Config | toml crate | `base.toml`, `queries.toml`, `domains.toml` |
+| Time | chrono | ISO 8601 timestamps for lastActive |
+| Paths | dirs | Cross-platform home directory resolution |
 | Query | SPARQL / SPARQL UPDATE | Open query surface; hooks run pre-filtered reads |
 | Hooks | Claude Code settings.json | `base hook <event>` — direct binary call |
 | Authoring | Markdown frontmatter + TOML | Human-writable source of truth; graph is derived |
@@ -109,4 +119,4 @@ Phase 0 (Rust Scaffold + Ontology) — `cargo init`, `ops:` vocabulary, IRI sche
 
 ---
 *PROJECT.md — Updated when requirements or context change*
-*Last updated: 2026-05-31 — Aligned to Rust CLI architecture*
+*Last updated: 2026-06-01 — Phase 1 (Hook Engine) complete*

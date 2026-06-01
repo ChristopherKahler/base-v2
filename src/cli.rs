@@ -1,5 +1,7 @@
 use clap::{Parser, Subcommand};
 
+use base::hook;
+
 #[derive(Parser)]
 #[command(name = "base", version, about = "Proactive context-injection engine for Claude Code")]
 pub struct Cli {
@@ -61,7 +63,7 @@ pub fn run() {
 
     match cli.command {
         Some(Commands::Hook { event }) => {
-            eprintln!("hook:{event} — not yet implemented");
+            hook::dispatch(&event);
         }
         Some(Commands::Project { action }) => {
             stub("project", &action);
