@@ -113,6 +113,22 @@ pub enum Commands {
         /// Target directory (defaults to cwd)
         path: Option<String>,
     },
+    /// Operator identity profile (init, show)
+    Operator {
+        #[command(subcommand)]
+        action: OperatorAction,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum OperatorAction {
+    /// Create operator profile at ~/.base-gbl/operator.toml
+    Init {
+        #[arg(long)]
+        name: String,
+    },
+    /// Show current operator profile
+    Show,
 }
 
 #[derive(Subcommand)]
@@ -503,6 +519,16 @@ pub fn run() {
                 eprintln!("Scaffold failed: {e}");
             }
         }
+
+        // ─── Operator ─────────────────────────────────────────
+        Some(Commands::Operator { action }) => match action {
+            OperatorAction::Init { name } => {
+                if let Err(e) = base::operator::init(&name) {
+                    eprintln!("Failed: {e}");
+                }
+            }
+            OperatorAction::Show => base::operator::show(),
+        },
 
         None => eprintln!("No command provided. Run `base --help` for usage."),
     }

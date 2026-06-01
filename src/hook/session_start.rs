@@ -19,6 +19,11 @@ pub fn handle(config: &BaseConfig, cwd: &Path) -> Result<()> {
     // Scan and ingest paul.toml projects into graph (idempotent)
     ingest_paul_projects(config, cwd);
 
+    // Emit operator profile (if configured)
+    if let Some(profile) = crate::operator::load() {
+        println!("{}", crate::operator::format_block(&profile));
+    }
+
     // Try signals first (Phase 5) — primary injection source
     if let Ok(signal_output) = crate::signal::run_signals(cwd, config)
         && !signal_output.is_empty() {

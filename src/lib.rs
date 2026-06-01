@@ -5,6 +5,7 @@ pub mod extract;
 pub mod hook;
 pub mod install;
 pub mod ontology;
+pub mod operator;
 pub mod scaffold;
 pub mod signal;
 pub mod store;
