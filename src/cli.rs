@@ -6,7 +6,14 @@ use base::domain;
 use base::hook;
 
 #[derive(Parser)]
-#[command(name = "base", version, about = "Proactive context-injection engine for Claude Code")]
+#[command(
+    name = "base",
+    version,
+    about = "BASE — Proactive context-injection engine for Claude Code",
+    after_help = "Built by Chris Kahler · Chris AI Systems\n\
+                  Community & support: https://chrisai.cv/skool\n\
+                  Tutorials: https://www.youtube.com/@chris-ai-systems"
+)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Commands>,
@@ -86,6 +93,15 @@ pub enum Commands {
         /// Filter by linked domain
         #[arg(long)]
         domain: Option<String>,
+    },
+    /// Install base globally: build, symlink, create ~/.base-gbl, wire hooks
+    Install {
+        /// Path to carl.json for decision migration
+        #[arg(long)]
+        carl: Option<String>,
+        /// Skip hook wiring in settings.json
+        #[arg(long)]
+        skip_hooks: bool,
     },
 }
 
@@ -408,6 +424,14 @@ pub fn run() {
                 return;
             }
             let _ = crud::note::recall(&cwd, &config.namespace, keyword.as_deref(), domain.as_deref());
+        }
+
+        // ─── Install ─────────────────────────────────────────
+        Some(Commands::Install { carl, skip_hooks }) => {
+            let carl_path = carl.as_ref().map(std::path::Path::new);
+            if let Err(e) = base::install::run(carl_path, skip_hooks) {
+                eprintln!("Install failed: {e}");
+            }
         }
 
         None => eprintln!("No command provided. Run `base --help` for usage."),

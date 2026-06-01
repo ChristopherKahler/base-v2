@@ -3,6 +3,7 @@ pub mod crud;
 pub mod domain;
 pub mod extract;
 pub mod hook;
+pub mod install;
 pub mod ontology;
 pub mod signal;
 pub mod store;
