@@ -61,6 +61,12 @@ pub enum Commands {
         /// Only re-extract files changed since last sync
         #[arg(long)]
         incremental: bool,
+        /// Run AST codebase extraction (tree-sitter, 35+ languages)
+        #[arg(long)]
+        ast: bool,
+        /// Target directory for AST extraction (defaults to cwd)
+        #[arg(long)]
+        target: Option<String>,
     },
     /// Manage domain matching rules
     Domain {
@@ -419,15 +425,60 @@ pub fn run() {
         },
 
         // ─── Sync ────────────────────────────────────────
-        Some(Commands::Sync { incremental }) => {
-            match base::extract::sync(&cwd, &config, incremental) {
-                Ok(report) => {
-                    println!(
-                        "Sync complete: {} scanned, {} extracted, {} skipped",
-                        report.scanned, report.extracted, report.skipped
-                    );
+        Some(Commands::Sync { incremental, ast, target }) => {
+            if ast {
+                // AST extraction via bundled Python scripts
+                let target_dir = target.as_deref().unwrap_or(".");
+                let binary_path = std::env::current_exe().unwrap_or_default();
+                let scripts_dir = binary_path
+                    .parent()
+                    .and_then(|p| p.parent())
+                    .map(|p| p.join("scripts").join("ast"))
+                    .unwrap_or_else(|| std::path::PathBuf::from("scripts/ast"));
+
+                // Also check relative to cwd for dev builds
+                let ast_script = if scripts_dir.join("onto_ast.py").exists() {
+                    scripts_dir.join("onto_ast.py")
+                } else {
+                    // Fallback: look relative to the base-v2 source
+                    cwd.join("scripts/ast/onto_ast.py")
+                };
+
+                if !ast_script.exists() {
+                    eprintln!("AST extractor not found at {}", ast_script.display());
+                    eprintln!("Expected: scripts/ast/onto_ast.py bundled with base");
+                    return;
                 }
-                Err(e) => eprintln!("Sync failed: {e}"),
+
+                let graph_path = base::config::find_workspace_base(&cwd)
+                    .map(|b| b.join("graph.trig"))
+                    .unwrap_or_else(|| cwd.join(".base/graph.trig"));
+
+                println!("AST extraction: {} → {}", target_dir, graph_path.display());
+                let status = std::process::Command::new("python3")
+                    .arg(&ast_script)
+                    .arg(target_dir)
+                    .arg("--output")
+                    .arg(&graph_path)
+                    .arg("--format")
+                    .arg("trig")
+                    .status();
+
+                match status {
+                    Ok(s) if s.success() => println!("AST extraction complete"),
+                    Ok(s) => eprintln!("AST extraction exited with code {:?}", s.code()),
+                    Err(e) => eprintln!("Failed to run AST extractor: {e}"),
+                }
+            } else {
+                match base::extract::sync(&cwd, &config, incremental) {
+                    Ok(report) => {
+                        println!(
+                            "Sync complete: {} scanned, {} extracted, {} skipped",
+                            report.scanned, report.extracted, report.skipped
+                        );
+                    }
+                    Err(e) => eprintln!("Sync failed: {e}"),
+                }
             }
         }
 
