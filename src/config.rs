@@ -1,7 +1,23 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use serde::Deserialize;
+
+// ─── Workspace discovery ─────────────────────────────────────
+
+/// Find the workspace `.base/` directory by walking up from cwd.
+pub fn find_workspace_base(cwd: &Path) -> Option<PathBuf> {
+    let mut dir = cwd.to_path_buf();
+    loop {
+        let base = dir.join(".base");
+        if base.is_dir() {
+            return Some(base);
+        }
+        if !dir.pop() {
+            return None;
+        }
+    }
+}
 
 // ─── Namespace Config ────────────────────────────────────────
 

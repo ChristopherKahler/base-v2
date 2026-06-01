@@ -37,12 +37,13 @@ The operator's entire context — projects, tasks, people, tools, frameworks, de
 - ✓ **Pre-filtered signal hooks** — session-start runs parameterized SPARQL, configurable queries — Phase 1
 - ✓ **Hooks fail-open** — errors → stderr, exit 0, empty stdout — Phase 1
 - ✓ **Namespace portability** — prefix + URI runtime-configurable via base.toml — Phase 1
+- ✓ **Deterministic domain matching** — domains.toml with keyword/path/exclude/sticky triggers, multi-signal matcher — Phase 2
 
 ### Active (In Progress)
-Phase 2 (Domain Matcher + Rule Injection) — deterministic domain matching via domains.toml.
+Phase 3 (Write Commands) — CRUD for projects, tasks, decisions, entities.
 
 ### Planned (Next)
-Phase 3 (Write Commands) — CRUD for projects, tasks, decisions, entities.
+Phase 4 (Extraction Layer) — `base sync` with idempotent extraction + AST ontology parsing.
 
 ### Out of Scope
 - BASE writing PAUL or other foreign framework state — read-only indexing only.
@@ -83,6 +84,8 @@ Phase 3 (Write Commands) — CRUD for projects, tasks, decisions, entities.
 | SPARQL queries operator-configurable | queries.toml with tiered override (embedded → global → workspace) | 2026-06-01 | Active |
 | Session-end nudge dropped | Hook unreliable (users close VS Code); nudge via signal layer instead | 2026-06-01 | Active |
 | No dirty-file tracking | Graph self-manages via mtime vs ops:lastExtracted; zero external state | 2026-06-01 | Active |
+| Session dedup via .base/.session with rules-hash | Bounded, self-cleaning, detects rule changes for re-injection | 2026-06-01 | Active |
+| domains.toml TOML format with [[domain]] tables | Clean, operator-readable, same tiered-override pattern as queries.toml | 2026-06-01 | Active |
 
 ## Success Metrics
 
@@ -119,4 +122,4 @@ Phase 3 (Write Commands) — CRUD for projects, tasks, decisions, entities.
 
 ---
 *PROJECT.md — Updated when requirements or context change*
-*Last updated: 2026-06-01 — Phase 1 (Hook Engine) complete*
+*Last updated: 2026-06-01 — Phase 2 (Domain Matcher) complete*

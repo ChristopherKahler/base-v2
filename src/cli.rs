@@ -1,5 +1,6 @@
 use clap::{Parser, Subcommand};
 
+use base::domain;
 use base::hook;
 
 #[derive(Parser)]
@@ -41,7 +42,7 @@ pub enum Commands {
     /// Manage domain matching rules
     Domain {
         #[command(subcommand)]
-        action: CrudAction,
+        action: DomainAction,
     },
 }
 
@@ -58,8 +59,32 @@ pub enum CrudAction {
     },
 }
 
+#[derive(Subcommand)]
+pub enum DomainAction {
+    /// Add a keyword or path trigger to a domain
+    AddTrigger {
+        /// Domain name
+        #[arg(long)]
+        domain: String,
+        /// Keyword trigger to add
+        #[arg(long)]
+        keyword: Option<String>,
+        /// Path trigger to add
+        #[arg(long)]
+        path: Option<String>,
+    },
+    /// List all configured domains
+    List,
+    /// Show a specific domain's full configuration
+    Get {
+        /// Domain name
+        name: String,
+    },
+}
+
 pub fn run() {
     let cli = Cli::parse();
+    let cwd = std::env::current_dir().unwrap_or_default();
 
     match cli.command {
         Some(Commands::Hook { event }) => {
@@ -80,9 +105,28 @@ pub fn run() {
         Some(Commands::Sync) => {
             eprintln!("sync — not yet implemented");
         }
-        Some(Commands::Domain { action }) => {
-            stub("domain", &action);
-        }
+        Some(Commands::Domain { action }) => match action {
+            DomainAction::AddTrigger {
+                domain: name,
+                keyword,
+                path,
+            } => {
+                if keyword.is_none() && path.is_none() {
+                    eprintln!("Provide --keyword and/or --path");
+                    return;
+                }
+                match domain::add_trigger(&cwd, &name, keyword.as_deref(), path.as_deref()) {
+                    Ok(()) => println!("Trigger added to domain '{name}'"),
+                    Err(e) => eprintln!("Failed to add trigger: {e}"),
+                }
+            }
+            DomainAction::List => {
+                domain::list_domains(&cwd);
+            }
+            DomainAction::Get { name } => {
+                domain::get_domain(&cwd, &name);
+            }
+        },
         None => {
             eprintln!("No command provided. Run `base --help` for usage.");
         }

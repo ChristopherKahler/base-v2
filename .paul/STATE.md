@@ -5,20 +5,21 @@
 See: .paul/PROJECT.md (updated 2026-06-01)
 
 **Core value:** Proactive, deterministic context-injection engine — suppression, not detection. The gate that stays silent until the one thing that matters changes.
-**Current focus:** Phase 1 complete. Ready for Phase 2 planning (Domain Matcher + Rule Injection).
+**Current focus:** Phase 2 complete. Ready for Phase 3 planning (Write Commands / CRUD).
 
 ## Current Position
 
 Milestone: v0.1 Proactive Context Engine
-Phase: 1 of 8 (Hook Engine) — Complete ✓
-Plan: 01-01 complete (PLAN → APPLY → UNIFY closed)
-Status: Phase 1 done. Ready for Phase 2 PLAN.
-Last activity: 2026-06-01 09:08 — UNIFY closed loop on Plan 01-01, phase transition complete
+Phase: 2 of 8 (Domain Matcher + Rule Injection) — Complete ✓
+Plan: 02-01 complete (PLAN → APPLY → UNIFY closed)
+Status: Phase 2 done. Ready for Phase 3 PLAN.
+Last activity: 2026-06-01 09:40 — UNIFY closed loop on Plan 02-01, phase transition complete
 
 Progress:
-- Milestone: [██░░░░░░░░] 22%
+- Milestone: [███░░░░░░░] 33%
 - Phase 0: [██████████] 100% ✓
 - Phase 1: [██████████] 100% ✓
+- Phase 2: [██████████] 100% ✓
 
 ## Loop Position
 
@@ -31,7 +32,7 @@ PLAN ──▶ APPLY ──▶ UNIFY
 ## Accumulated Context
 
 ### Decisions
-17 decisions (12 design + 1 Phase 0 build + 4 Phase 1 planning):
+19 decisions (12 design + 1 Phase 0 + 4 Phase 1 + 2 Phase 2):
 - Rust single binary with embedded Oxigraph — CLI + hook handler, no MCP server.
 - TTL-is-the-store — TriG text files, no separate database. Git-native.
 - IRI-keyed idempotent extraction is the structural fix for v1 rot.
@@ -44,19 +45,26 @@ PLAN ──▶ APPLY ──▶ UNIFY
 - SPARQL queries are operator-configurable via `queries.toml` with tiered override (embedded defaults → global → workspace).
 - Session-end nudge dropped — hook unreliable (users close VS Code). Nudge behavior deferred to signal layer at session-start.
 - No dirty-file tracking — graph self-manages via `mtime` vs `ops:lastExtracted` comparison. The graph's own metadata IS the state tracker.
+- Session dedup via `.base/.session` with rules-hash — bounded, self-cleaning at session-start, detects rule changes.
+- domains.toml TOML format with `[[domain]]` tables — clean, operator-readable, same tiered-override pattern.
 
 ### Deferred Issues
 None.
+
+### Git State
+Last commit: bfe0a6a
+Branch: main
+Feature branches merged: none
 
 ### Blockers/Concerns
 None.
 
 ## Session Continuity
 
-Last session: 2026-06-01 09:08
-Stopped at: Phase 1 UNIFY complete, transition done
-Next action: Run /paul:plan for Phase 2 (Domain Matcher + Rule Injection)
-Resume file: .paul/phases/01-hook-engine/01-01-SUMMARY.md
+Last session: 2026-06-01 09:40
+Stopped at: Phase 2 UNIFY complete, transition done
+Next action: Run /paul:plan for Phase 3 (Write Commands / CRUD)
+Resume file: .paul/phases/02-domain-matcher/02-01-SUMMARY.md
 
 ---
 *STATE.md — Updated after every significant action*

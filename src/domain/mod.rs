@@ -1,0 +1,187 @@
+pub mod matcher;
+pub mod session;
+
+use std::path::Path;
+
+use serde::{Deserialize, Serialize};
+
+// ─── Domain data model ───────────────────────────────────────
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct DomainDef {
+    pub name: String,
+    #[serde(default = "default_mode")]
+    pub mode: String, // "always" | "triggered"
+    #[serde(default)]
+    pub keywords: Vec<String>,
+    #[serde(default)]
+    pub paths: Vec<String>,
+    #[serde(default)]
+    pub exclude: Vec<String>,
+    #[serde(default)]
+    pub sticky: bool,
+    #[serde(default)]
+    pub rules: Vec<String>,
+}
+
+fn default_mode() -> String {
+    "triggered".into()
+}
+
+impl DomainDef {
+    pub fn is_always(&self) -> bool {
+        self.mode == "always"
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct DomainsFile {
+    #[serde(default)]
+    domain: Vec<DomainDef>,
+}
+
+// ─── Loading (tiered: global → workspace) ────────────────────
+
+/// Load domains: global `~/.base-gbl/domains.toml` → workspace `.base/domains.toml`.
+/// Returns empty Vec if neither exists (no error).
+pub fn load_domains(cwd: &Path) -> Vec<DomainDef> {
+    let mut domains = Vec::new();
+
+    // Global
+    if let Some(home) = dirs::home_dir()
+        && let Ok(content) =
+            std::fs::read_to_string(home.join(".base-gbl").join("domains.toml"))
+        && let Ok(file) = toml::from_str::<DomainsFile>(&content)
+    {
+        domains = file.domain;
+    }
+
+    // Workspace (overlays global by name)
+    if let Some(base_dir) = crate::config::find_workspace_base(cwd)
+        && let Ok(content) = std::fs::read_to_string(base_dir.join("domains.toml"))
+        && let Ok(file) = toml::from_str::<DomainsFile>(&content)
+    {
+        domains = merge_domains(domains, file.domain);
+    }
+
+    domains
+}
+
+fn merge_domains(base: Vec<DomainDef>, overlay: Vec<DomainDef>) -> Vec<DomainDef> {
+    let mut merged = base;
+    for od in overlay {
+        if let Some(pos) = merged.iter().position(|d| d.name == od.name) {
+            merged[pos] = od;
+        } else {
+            merged.push(od);
+        }
+    }
+    merged
+}
+
+// ─── Mutation (for CLI commands) ─────────────────────────────
+
+/// Add a keyword or path trigger to a domain in workspace domains.toml.
+/// Creates the domain (mode=triggered) if it doesn't exist.
+pub fn add_trigger(
+    cwd: &Path,
+    domain_name: &str,
+    keyword: Option<&str>,
+    path: Option<&str>,
+) -> anyhow::Result<()> {
+    let base_dir = crate::config::find_workspace_base(cwd)
+        .unwrap_or_else(|| cwd.join(".base"));
+    std::fs::create_dir_all(&base_dir)?;
+
+    let toml_path = base_dir.join("domains.toml");
+    let mut file: DomainsFile = if toml_path.exists() {
+        let content = std::fs::read_to_string(&toml_path)?;
+        toml::from_str(&content)?
+    } else {
+        DomainsFile {
+            domain: Vec::new(),
+        }
+    };
+
+    // Find or create domain
+    let domain = if let Some(pos) = file.domain.iter().position(|d| d.name == domain_name) {
+        &mut file.domain[pos]
+    } else {
+        file.domain.push(DomainDef {
+            name: domain_name.to_string(),
+            mode: "triggered".to_string(),
+            keywords: Vec::new(),
+            paths: Vec::new(),
+            exclude: Vec::new(),
+            sticky: false,
+            rules: Vec::new(),
+        });
+        file.domain.last_mut().unwrap()
+    };
+
+    if let Some(kw) = keyword
+        && !domain.keywords.contains(&kw.to_string())
+    {
+        domain.keywords.push(kw.to_string());
+    }
+    if let Some(p) = path
+        && !domain.paths.contains(&p.to_string())
+    {
+        domain.paths.push(p.to_string());
+    }
+
+    // Atomic write via temp + rename
+    let tmp_path = toml_path.with_extension("toml.tmp");
+    let content = toml::to_string_pretty(&file)?;
+    std::fs::write(&tmp_path, &content)?;
+    std::fs::rename(&tmp_path, &toml_path)?;
+
+    Ok(())
+}
+
+/// List all domains (for CLI output).
+pub fn list_domains(cwd: &Path) {
+    let domains = load_domains(cwd);
+    if domains.is_empty() {
+        eprintln!("No domains configured.");
+        return;
+    }
+    println!("| Domain | Mode | Keywords | Paths | Rules |");
+    println!("|--------|------|----------|-------|-------|");
+    for d in &domains {
+        println!(
+            "| {} | {} | {} | {} | {} |",
+            d.name,
+            d.mode,
+            d.keywords.len(),
+            d.paths.len(),
+            d.rules.len(),
+        );
+    }
+}
+
+/// Show a specific domain's full config (for CLI output).
+pub fn get_domain(cwd: &Path, name: &str) {
+    let domains = load_domains(cwd);
+    match domains.iter().find(|d| d.name == name) {
+        Some(d) => {
+            println!("Domain: {}", d.name);
+            println!("Mode: {}", d.mode);
+            println!("Sticky: {}", d.sticky);
+            if !d.keywords.is_empty() {
+                println!("Keywords: {}", d.keywords.join(", "));
+            }
+            if !d.paths.is_empty() {
+                println!("Paths: {}", d.paths.join(", "));
+            }
+            if !d.exclude.is_empty() {
+                println!("Exclude: {}", d.exclude.join(", "));
+            }
+            println!("Rules ({}):", d.rules.len());
+            for (i, rule) in d.rules.iter().enumerate() {
+                println!("  {i}. {rule}");
+            }
+        }
+        None => eprintln!("Domain '{name}' not found."),
+    }
+}

@@ -1,5 +1,6 @@
 pub mod post_tool_use;
 pub mod session_start;
+pub mod user_prompt_submit;
 
 use std::io::Read;
 use std::path::PathBuf;
@@ -27,6 +28,7 @@ fn run(event: &str) -> anyhow::Result<()> {
     match event {
         "session-start" => session_start::handle(&config, &cwd),
         "post-tool-use" => post_tool_use::handle(&config, &cwd, &stdin_json),
+        "user-prompt-submit" => user_prompt_submit::handle(&config, &cwd, &stdin_json),
         _ => Ok(()), // Unknown events → silent exit
     }
 }

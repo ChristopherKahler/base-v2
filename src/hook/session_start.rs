@@ -8,6 +8,11 @@ use crate::ontology;
 use crate::store;
 
 pub fn handle(config: &BaseConfig, cwd: &Path) -> Result<()> {
+    // Clear session dedup state for fresh session
+    if let Some(base_dir) = crate::config::find_workspace_base(cwd) {
+        crate::domain::session::SessionState::clear(&base_dir);
+    }
+
     let trig_files = discover_trig_files(cwd);
 
     if trig_files.is_empty() {
