@@ -1,4 +1,5 @@
 pub mod post_tool_use;
+pub mod pre_tool_use;
 pub mod session_start;
 pub mod user_prompt_submit;
 
@@ -27,6 +28,7 @@ fn run(event: &str) -> anyhow::Result<()> {
 
     match event {
         "session-start" => session_start::handle(&config, &cwd),
+        "pre-tool-use" => pre_tool_use::handle(&config, &cwd, &stdin_json),
         "post-tool-use" => post_tool_use::handle(&config, &cwd, &stdin_json),
         "user-prompt-submit" => user_prompt_submit::handle(&config, &cwd, &stdin_json),
         _ => Ok(()), // Unknown events → silent exit

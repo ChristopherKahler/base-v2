@@ -366,6 +366,11 @@ fn format_toml_rules(domain_def: &domain::DomainDef) -> String {
 
 // ─── Auto-sync ──────────────────────────────────────────────
 
+/// Public wrapper for pre_tool_use to call.
+pub fn ensure_domain_sync_pub(config: &BaseConfig, cwd: &Path) {
+    ensure_domain_sync(config, cwd);
+}
+
 /// Ensure domains.toml has been synced to the graph this session.
 /// Uses a timestamp marker file to avoid re-syncing on every prompt.
 fn ensure_domain_sync(config: &BaseConfig, cwd: &Path) {
