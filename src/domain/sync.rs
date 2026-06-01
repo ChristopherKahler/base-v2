@@ -39,29 +39,11 @@ pub fn sync_domains_to_graph(
         let domain_slug = crud::slugify(&domain_def.name);
         let domain_iri = crud::build_iri(ns, "domain", &domain_slug);
 
-        // Delete existing triples for this domain and its rules
-        let delete_sparql = format!(
-            "{pfx}\n\
-             DELETE {{\n\
-               GRAPH <{graph}> {{\n\
-                 <{domain_iri}> ?dp ?do .\n\
-                 ?rule ?rp ?ro .\n\
-               }}\n\
-             }}\n\
-             WHERE {{\n\
-               GRAPH <{graph}> {{\n\
-                 <{domain_iri}> ?dp ?do .\n\
-                 OPTIONAL {{\n\
-                   <{domain_iri}> {p}:hasRule ?rule .\n\
-                   ?rule ?rp ?ro .\n\
-                 }}\n\
-               }}\n\
-             }}"
-        );
-        // Ignore errors on delete (domain may not exist yet)
-        let _ = store.update(&delete_sparql);
+        // UPSERT domain metadata — never delete. Graph is additive.
+        // Sync only ensures the domain entity exists with current trigger config.
+        // Rules, decisions, notes are graph-native and never touched by sync.
 
-        // Insert domain entity
+        // Insert domain entity (upsert via INSERT DATA — duplicates are idempotent in RDF)
         let prompt_kw_triples: String = domain_def
             .prompt_keywords
             .iter()
