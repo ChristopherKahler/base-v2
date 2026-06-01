@@ -4,4 +4,5 @@ pub mod domain;
 pub mod extract;
 pub mod hook;
 pub mod ontology;
+pub mod signal;
 pub mod store;

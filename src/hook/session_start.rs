@@ -13,6 +13,14 @@ pub fn handle(config: &BaseConfig, cwd: &Path) -> Result<()> {
         crate::domain::session::SessionState::clear(&base_dir);
     }
 
+    // Try signals first (Phase 5) — primary injection source
+    if let Ok(signal_output) = crate::signal::run_signals(cwd, config)
+        && !signal_output.is_empty() {
+            print!("{signal_output}");
+            return Ok(());
+        }
+
+    // Fallback: ad-hoc queries from queries.toml (Phase 1 behavior)
     let trig_files = discover_trig_files(cwd);
 
     if trig_files.is_empty() {
@@ -22,7 +30,6 @@ pub fn handle(config: &BaseConfig, cwd: &Path) -> Result<()> {
     let paths: Vec<&Path> = trig_files.iter().map(|p| p.as_path()).collect();
     let graph = store::load_graphs(&paths)?;
 
-    // Load vocabulary so class/predicate IRIs are available to queries
     ontology::load_vocabulary(&graph, &config.namespace)?;
 
     let queries = load_queries(cwd, config);
@@ -47,7 +54,6 @@ pub fn handle(config: &BaseConfig, cwd: &Path) -> Result<()> {
                 output.push('\n');
             }
         }
-        // Query errors are silently skipped (fail-open per query)
     }
 
     if !output.is_empty() {

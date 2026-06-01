@@ -53,6 +53,38 @@ pub struct BaseConfig {
     pub namespace: NamespaceConfig,
     #[serde(default)]
     pub sync: SyncConfig,
+    #[serde(default)]
+    pub signal: SignalConfig,
+}
+
+// ─── Signal Config ───────────────────────────────────────────
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct SignalConfig {
+    #[serde(default = "default_max_chars")]
+    pub max_chars: usize,
+    #[serde(default = "default_stale_days")]
+    pub stale_days: u32,
+    #[serde(default = "default_active_days")]
+    pub active_days: u32,
+    #[serde(default = "default_signal_enabled")]
+    pub enabled: bool,
+}
+
+fn default_max_chars() -> usize { 2000 }
+fn default_stale_days() -> u32 { 14 }
+fn default_active_days() -> u32 { 7 }
+fn default_signal_enabled() -> bool { true }
+
+impl Default for SignalConfig {
+    fn default() -> Self {
+        Self {
+            max_chars: default_max_chars(),
+            stale_days: default_stale_days(),
+            active_days: default_active_days(),
+            enabled: default_signal_enabled(),
+        }
+    }
 }
 
 // ─── Sync Config ─────────────────────────────────────────────

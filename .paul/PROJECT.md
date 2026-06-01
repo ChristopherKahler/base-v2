@@ -40,12 +40,13 @@ The operator's entire context — projects, tasks, people, tools, frameworks, de
 - ✓ **Deterministic domain matching** — domains.toml with keyword/path/exclude/sticky triggers, multi-signal matcher — Phase 2
 - ✓ **Two write paths** — CLI commands (CRUD) for 6 entity types via SPARQL UPDATE, IRI-scoped — Phase 3
 - ✓ **Idempotent extraction** — `base sync` with frontmatter + paul.json extractors, mtime incremental, configurable patterns — Phase 4
+- ✓ **Suppression layer** — 3 signal types with cross-session hash dedup, budget cap, priorities — Phase 5
 
 ### Active (In Progress)
-Phase 5 (Signal Layer) — parameterized SPARQL signals, suppression layer, firehose comparison.
+Phase 6 (CARL Absorption) — port remaining CARL mechanisms, retire Python hooks.
 
 ### Planned (Next)
-Phase 6 (CARL Absorption) — port remaining CARL mechanisms, retire Python hooks.
+Phase 7 (v1 Migration + Cutover) — JSON→triples transform, retire v1.
 
 ### Out of Scope
 - BASE writing PAUL or other foreign framework state — read-only indexing only.
@@ -124,4 +125,4 @@ Phase 6 (CARL Absorption) — port remaining CARL mechanisms, retire Python hook
 
 ---
 *PROJECT.md — Updated when requirements or context change*
-*Last updated: 2026-06-01 — Phase 4 (Extraction Layer) complete*
+*Last updated: 2026-06-01 — Phase 5 (Signal Layer) complete*

@@ -8,7 +8,7 @@ Build the BASE v2 proactive context engine from the Rust scaffold up: define the
 
 **v0.1 Proactive Context Engine** (v0.1.0)
 Status: In progress
-Phases: 5 of 9 complete
+Phases: 6 of 9 complete
 
 ## Phases
 
@@ -19,7 +19,7 @@ Phases: 5 of 9 complete
 | 2 | Domain Matcher + Rule Injection | 01 | Complete ✓ | 2026-06-01 |
 | 3 | Write Commands (CRUD) | 02 | Complete ✓ | 2026-06-01 |
 | 4 | Extraction Layer | 01 | Complete ✓ | 2026-06-01 |
-| 5 | Signal Layer (proof) | TBD | Not started | - |
+| 5 | Signal Layer (proof) | 01 | Complete ✓ | 2026-06-01 |
 | 6 | CARL Absorption | TBD | Not started | - |
 | 7 | v1 Migration + Cutover | TBD | Not started | - |
 | 8 | Dashboard (optional) | TBD | Not started | - |
