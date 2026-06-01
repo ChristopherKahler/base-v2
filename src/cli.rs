@@ -75,13 +75,13 @@ pub enum Commands {
         /// Note type: insight, correction, decision, commitment, shift
         #[arg(long, default_value = "insight")]
         r#type: String,
-        /// Link to a domain
+        /// Link to a domain (REQUIRED — notes without domain edges are orphans)
         #[arg(long)]
-        domain: Option<String>,
-        /// Link to a project
+        domain: String,
+        /// Link to a project (optional additional edge)
         #[arg(long)]
         project: Option<String>,
-        /// Link to an entity (person, org)
+        /// Link to an entity (optional additional edge)
         #[arg(long)]
         entity: Option<String>,
     },
@@ -123,8 +123,9 @@ pub enum ProjectAction {
         name: String,
         #[arg(long, default_value = "active")]
         status: String,
+        /// Project path (REQUIRED — auto-creates domain trigger for file matching)
         #[arg(long)]
-        path: Option<String>,
+        path: String,
     },
     /// List all projects
     List,
@@ -300,7 +301,7 @@ pub fn run() {
         // ─── Project ─────────────────────────────────────
         Some(Commands::Project { action }) => match action {
             ProjectAction::Add { name, status, path } => {
-                match crud::project::add(&cwd, &config.namespace, &name, &status, path.as_deref()) {
+                match crud::project::add(&cwd, &config.namespace, &name, &status, Some(&path)) {
                     Ok(slug) => println!("Project '{name}' created (slug: {slug})"),
                     Err(e) => eprintln!("Failed: {e}"),
                 }
@@ -460,11 +461,11 @@ pub fn run() {
                 &config.namespace,
                 &text,
                 &r#type,
-                domain.as_deref(),
+                Some(&domain),
                 project.as_deref(),
                 entity.as_deref(),
             ) {
-                Ok(slug) => println!("Learned: '{text}' (slug: {slug}, type: {})", r#type),
+                Ok(slug) => println!("Learned: '{text}' (slug: {slug}, type: {}, domain: {domain})", r#type),
                 Err(e) => eprintln!("Failed: {e}"),
             }
         }
