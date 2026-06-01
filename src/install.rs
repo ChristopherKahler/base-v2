@@ -35,7 +35,10 @@ pub fn run(carl_json_path: Option<&Path>, skip_hooks: bool) -> Result<()> {
         migrate_carl(&global_dir, carl_path)?;
     }
 
-    // Step 5: Append BASE CLI section to ~/.claude/CLAUDE.md
+    // Step 5: Seed system rules
+    seed_system_rules(&global_dir)?;
+
+    // Step 6: Append BASE CLI section to ~/.claude/CLAUDE.md
     let claude_md = home.join(".claude").join("CLAUDE.md");
     append_claude_md(&claude_md)?;
 
@@ -164,6 +167,15 @@ rules = []
         println!("   domains.toml exists, preserved");
     }
 
+    // docs/markdown-ontology-protocol.md — bundled MOP spec
+    let docs_dir = global_dir.join("docs");
+    std::fs::create_dir_all(&docs_dir)?;
+    let mop_path = docs_dir.join("markdown-ontology-protocol.md");
+    if !mop_path.exists() {
+        std::fs::write(&mop_path, include_str!("../docs/markdown-ontology-protocol.md"))?;
+        println!("   Created docs/markdown-ontology-protocol.md");
+    }
+
     Ok(())
 }
 
@@ -253,7 +265,53 @@ fn migrate_carl(global_dir: &Path, carl_path: &Path) -> Result<()> {
     Ok(())
 }
 
-// ─── Step 5: CLAUDE.md integration ──────────────────────────
+// ─── Step 5: Seed system rules ──────────────────────────────
+
+fn seed_system_rules(global_dir: &Path) -> Result<()> {
+    print!("5. Seed system rules ... ");
+
+    let config = BaseConfig::load(global_dir);
+
+    // Sync domains first so GLOBAL domain entity exists
+    let _ = crate::domain::sync::sync_domains_to_graph(&config, global_dir, None);
+
+    // Check if MOP rule already exists
+    let ns = &config.namespace;
+    let p = &ns.prefix;
+    let domain_iri = crate::crud::build_iri(ns, "domain", "global");
+
+    let check = format!(
+        "SELECT ?text WHERE {{ GRAPH ?g {{ <{domain_iri}> {p}:hasRule ?r . ?r {p}:ruleText ?text . FILTER(CONTAINS(?text, \"Markdown Ontology Protocol\")) }} }}"
+    );
+
+    let already_exists = if let Ok(results) = crate::crud::load_and_query(global_dir, ns, &check) {
+        if let oxigraph::sparql::QueryResults::Solutions(solutions) = results {
+            solutions.filter_map(|r| r.ok()).next().is_some()
+        } else {
+            false
+        }
+    } else {
+        false
+    };
+
+    if already_exists {
+        println!("✓ (already seeded)");
+        return Ok(());
+    }
+
+    // Seed MOP rule
+    let _ = crate::crud::rule::add(
+        global_dir,
+        ns,
+        "GLOBAL",
+        "When writing or editing markdown files, follow the Markdown Ontology Protocol (MOP) — use YAML frontmatter with type, status, tags, and relatedTo fields so base sync can extract the document into the graph. Read ~/.base-gbl/docs/markdown-ontology-protocol.md before writing frontmatter.",
+    );
+
+    println!("✓ (MOP rule added to GLOBAL)");
+    Ok(())
+}
+
+// ─── Step 6: CLAUDE.md integration ──────────────────────────
 
 const BASE_CLI_SECTION: &str = r#"
 ## BASE CLI — Proactive Context Engine
