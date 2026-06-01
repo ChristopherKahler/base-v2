@@ -5,32 +5,32 @@
 See: .paul/PROJECT.md (updated 2026-06-01)
 
 **Core value:** Proactive, deterministic context-injection engine — suppression, not detection. The gate that stays silent until the one thing that matters changes.
-**Current focus:** Phase 6 in progress. Plan 06-01 complete (graph-backed rules). Ready for Plan 06-02.
+**Current focus:** Binary is LIVE. Phase 6 substantially complete (3 PAUL plans + extensive post-plan work). CARL retired. Ready for Phase 7 or Phase 6 closure.
 
 ## Current Position
 
 Milestone: v0.1 Proactive Context Engine
-Phase: 6 of 8 (CARL Absorption) — In Progress
-Plan: 06-03 complete (PLAN → APPLY → UNIFY closed)
-Status: Ready for next PLAN (06-04: CARL retirement)
-Last activity: 2026-06-01 13:30 — UNIFY closed loop on Plan 06-03
+Phase: 6 of 8 (CARL Absorption) — Substantially Complete
+Plan: 06-03 closed via PAUL + 12 post-plan commits (install, scaffold, rule CRUD, pre-tool-use, paul.toml, mandatory edges)
+Status: Binary installed and live at ~/.local/bin/base. All 4 hooks wired. CARL retired.
+Last activity: 2026-06-01 15:48 — Handoff after full system live testing
 
 Progress:
-- Milestone: [██████░░░░] 66%
+- Milestone: [████████░░] 80%
 - Phase 0: [██████████] 100% ✓
 - Phase 1: [██████████] 100% ✓
 - Phase 2: [██████████] 100% ✓
 - Phase 3: [██████████] 100% ✓
 - Phase 4: [██████████] 100% ✓
 - Phase 5: [██████████] 100% ✓
-- Phase 6: [████████░░] 75%
+- Phase 6: [█████████░] 95% (CARL retired, all features shipped, formal plan 06-04 skipped)
 
 ## Loop Position
 
 Current loop state:
 ```
 PLAN ──▶ APPLY ──▶ UNIFY
-  ✓        ✓        ✓     [Loop complete — ready for next PLAN]
+  ✓        ✓        ✓     [Plan 06-03 closed. Post-plan work committed directly.]
 ```
 
 ## Accumulated Context
@@ -65,7 +65,7 @@ PLAN ──▶ APPLY ──▶ UNIFY
 - AST/code extraction (open-ontologies integration) — deferred to future plan.
 
 ### Git State
-Last commit: 0452ba2
+Last commit: 5a68997
 Branch: main
 Feature branches merged: none
 
@@ -74,10 +74,10 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-06-01 13:30
-Stopped at: Plan 06-03 loop closed — base learn shipped
-Next action: /paul:plan for Plan 06-04 (CARL retirement) — or /paul:pause if deferring retirement
-Resume file: .paul/phases/06-carl-absorption/06-03-PLAN.md
+Last session: 2026-06-01 15:48
+Stopped at: System live — binary installed, all hooks wired, CARL retired, tested with real prompts
+Next action: Close Phase 6 formally, OR update PAUL to emit paul.toml, OR start Phase 7 (v1 migration)
+Resume file: .paul/HANDOFF-2026-06-01-session2.md
 
 ---
 *STATE.md — Updated after every significant action*

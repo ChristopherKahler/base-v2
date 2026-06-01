@@ -1,118 +1,163 @@
-# BASE v2 — Proactive Context Engine
+# BASE — Proactive Context Engine for Claude Code
 
-> A ground-up rebuild of BASE that replaces v1's JSON-file + MCP-CRUD model with a proactive, deterministic context-injection engine backed by an RDF knowledge graph. The operator's context becomes one queryable relationship graph, surfaced through a Rust CLI that hooks call directly.
+> A Rust single binary that hooks into Claude Code and injects only the context that matters. Rules, decisions, notes, and project state live in an RDF knowledge graph. The system matches on what you're touching (files, prompts, projects) and surfaces the relational neighborhood. It stays silent until something changes.
 
-**Type:** Application (framework / internal tooling)
-**Stack:** Rust single binary · embedded Oxigraph (in-memory, TTL-persisted) · SPARQL query layer · Claude Code hooks (stdin/stdout) · TOML config · markdown/TOML authoring surface
-**Quality Gates:** idempotent extraction (zero dup/drift) · SPARQL query correctness · hook latency budget (<5ms) · lossless v1 migration
-
-> **v1 reference (do not edit in place):** `apps/base/` · v1 data: `.base/data/*.json`
-> **Architecture decisions:** `ARCHITECTURE.md` (source of truth for all resolved design questions)
-> **Full ideation:** `planning/base-v2/PLANNING.md`
+**Built by Chris Kahler · Chris AI Systems**
+**Community & support:** https://chrisai.cv/skool
+**Tutorials:** https://www.youtube.com/@chris-ai-systems
 
 ---
 
-## Headline Thesis
+## Install
 
-BASE v2 is **not** project management with a graph. It is a **proactive, deterministic context-injection engine** for Claude — an "all-seeing eye" that anchors on what Claude is touching (file, path, prompt, project) and injects only the salient slice of the operator's graph: rules, decisions, relations, history, gotchas. PM/CRUD is a supporting capability, not the headline.
+```bash
+# Clone and build
+git clone <repo-url>
+cd base-v2
+cargo build --release
 
-The system lives or dies on **suppression, not detection.** Detection (fire a hook, match a path) is trivial. The product is the gate that stays silent until the one thing that matters changes.
+# Run the installer (copies binary, creates global config, wires hooks, updates CLAUDE.md)
+./target/release/base install
+```
+
+That's it. `base install` handles:
+1. Copies binary to `~/.local/bin/base`
+2. Creates `~/.base-gbl/` with default configs (devmode, brackets, signals)
+3. Wires all 4 hooks in `~/.claude/settings.json`
+4. Appends BASE CLI section to `~/.claude/CLAUDE.md` (Claude knows the tools exist)
+
+## Scaffold a Workspace
+
+```bash
+cd ~/my-workspace
+base scaffold
+```
+
+Creates `.base/` with workspace-specific config, registers the workspace globally. Every registered workspace gets scanned for projects on session start.
+
+---
+
+## How It Works
+
+### Hooks (automatic, every session)
+
+| Hook | When | What |
+|------|------|------|
+| **SessionStart** | New session opens | Syncs domains, ingests paul.toml projects, runs signals (pulse, staleness, active-awareness) |
+| **UserPromptSubmit** | You type a prompt | Matches keywords against domains, injects rules + decisions + notes from graph |
+| **PreToolUse** | Claude is about to edit a file | Matches file path against domain triggers, injects rules BEFORE the edit |
+| **PostToolUse** | Claude finishes editing | Updates lastActive timestamps in graph |
+
+### CLI (proactive, called by Claude or you)
+
+```bash
+# Rules — graph-native, not in config files
+base rule add --domain DEVELOPMENT --text "Always use motion, not framer-motion"
+base rule list --domain GLOBAL
+base rule remove --domain GLOBAL --index 3
+
+# Memory — structured notes with relational edges
+base learn --text "JWT is the auth pattern for this project" --domain CASEGATE --type decision
+base recall --keyword "auth" --domain CASEGATE
+
+# Decisions
+base decision log --domain GLOBAL --decision "Use Rust for hot path" --rationale "Performance critical"
+base decision search --keyword "auth"
+
+# Projects — auto-creates domain trigger for file matching
+base project add --name "my-app" --path "apps/my-app" --status active
+base project list
+
+# Tasks, Entities, Goals, Reminders
+base task add --project my-app --name "Fix auth flow"
+base entity add --name "Charlie" --type person --domain CASEGATE
+base goal add --name "Ship v1" --target "2026-07-01"
+base reminder add --name "Review PR" --due 2026-06-05
+```
 
 ---
 
 ## Architecture
 
-**Interface = CLI, not MCP server.** One surface callable by Claude (Bash), hooks (settings.json), and the user (terminal). Near-zero standing context (no tool schemas loaded).
+### Two-Layer Config
 
-**Language = Rust, single binary.** `base` = CRUD CLI + hook handler + embedded Oxigraph (Rust-native). Cleanest distribution, fastest hooks (~1-5ms vs Python's ~50-150ms cold-start). Builder is Claude, so operator's non-fluency in Rust is irrelevant.
+**`domains.toml`** = triggers only (keywords, file paths, exclude patterns)
+```toml
+[[domain]]
+name = "DEVELOPMENT"
+mode = "triggered"
+prompt_keywords = ["write code", "fix bug", "implement"]
+file_keywords = ["use crate", "import", "fn main"]
+paths = ["src/"]
+```
 
-**Hooks call the CLI directly.** `settings.json` command = `base hook <event>`. No wrapper scripts. Binary has a `hook` mode: reads event JSON on stdin, writes injection/decision to stdout.
+**Graph** = content (rules, decisions, notes, entities with relational edges)
 
-See `ARCHITECTURE.md` for the full design rationale.
+Triggers fire the match. The graph provides the context. SPARQL queries traverse 1-2 hops from the matched domain to surface the neighborhood.
 
-### Three tiers = named graphs
+### Three Tiers
 
-| Tier | Named graph | Store | Owns |
-|------|-------------|-------|------|
-| User / global | `ops:graph/global` | `.base-gbl/graph.trig` | Operator profile, goals, cross-workspace entities, shared vocabulary |
-| Workspace | `ops:graph/ws/{slug}` | `{workspace}/.base/graph.trig` | Projects, tasks, reminders, decisions, knowledge docs |
-| Project | folded into workspace graph | — | PAUL project state, indexed read-only |
+| Tier | Config | Graph | Scope |
+|------|--------|-------|-------|
+| Global | `~/.base-gbl/base.toml` | `~/.base-gbl/graph.trig` | All workspaces |
+| Workspace | `{ws}/.base/base.toml` | `{ws}/.base/graph.trig` | One workspace |
+| Project | `.paul/paul.toml` | Ingested into workspace graph | One project |
 
-### Persistence: TTL is the store
+### Context Brackets
 
-Each tier is a TriG text file. Every `base` write = short-lived process: load relevant TTL → apply SPARQL UPDATE → atomic write-back (temp + rename). Every read (incl. hooks) loads file(s) into in-memory Oxigraph, queries, exits. No long-running server, no in-memory-lost-on-crash. Git-sync is native — TTL is text.
+Session depth tracking: FRESH (lean injection) → MODERATE (full injection) → DEPLETED (force-refresh dedup) → CRITICAL. Configurable thresholds in `base.toml`.
 
-### Two write paths, one graph
+### DEVMODE
 
-1. **CLI commands (imperative)** — BASE-owned mutable state (projects, tasks, decisions, entities, goals). Mutations are SPARQL UPDATE scoped to the entity IRI, idempotent, supersession-preserving.
-2. **Extraction (declarative)** — file-owned data. Markdown frontmatter → triples (MOP); `paul.json` → triples. Each scan clears that node's subgraph and re-emits from the current file.
+When enabled, every prompt injection includes a telemetry block: which domains loaded, which were deduped, bracket state, available domains. Operator reads this to tune the system.
 
-### Domain matching
+### Mandatory Edges
 
-Deterministic matching via user-edited `domains.toml` — keywords, path globs, excludes, sticky sessions. Multi-signal: prompt keywords + edited file paths + active-project edges. No semantic/fuzzy matching in the core. See `ARCHITECTURE.md` §6.
-
----
-
-## Data Model
-
-| Class | Source of truth | Write path |
-|-------|-----------------|------------|
-| `ops:Project` | BASE | CLI |
-| `ops:Task` | BASE | CLI |
-| `ops:Decision` | BASE | CLI |
-| `ops:Entity` (Person, Org) | BASE | CLI |
-| `ops:Goal` | BASE | CLI |
-| `ops:Reminder` | BASE | CLI |
-| `ops:Workspace` | init-workspace | CLI |
-| `ops:Domain` | `domains.toml` | Extraction |
-| `ops:Rule` | `domains.toml` | Extraction |
-| `ops:Document` | markdown file | Extraction |
-| `ops:PaulProject` | `.paul/paul.json` | Extraction (read-only) |
-
-**IRI scheme is load-bearing** — stable identity (path + slug), never generated ids. Same entity referenced N places = one node.
-**Supersession is native** — retire via `ops:status superseded` + timestamp; never silent deletion.
+Every entity-creating command requires a domain edge. No orphans in the graph:
+- `base learn` requires `--domain`
+- `base entity add` requires `--domain`
+- `base project add` requires `--path` (auto-creates domain trigger)
+- `base decision log` requires `--domain`
+- `base rule add` requires `--domain`
 
 ---
 
-## Implementation Phases
+## Workspace Registry
 
-| # | Phase | "It works" |
-|---|-------|-----------|
-| 0 | Rust Scaffold + Ontology | Binary compiles; hand-authored TTL loads; sample SPARQL returns expected rows |
-| 1 | Hook Engine | Session starts produce filtered injection; file edits update lastActive |
-| 2 | Domain Matcher + Rule Injection | Replaces CARL's Python matching on UserPromptSubmit |
-| 3 | Write Commands (CRUD) | CLI manages entities; TTL updates atomically |
-| 4 | Extraction Layer | Re-scan = identical graph; edit file → stale fact gone |
-| 5 | Signal Layer (proof) | Filtered injection beats v1 firehose on `active-awareness` |
-| 6 | CARL Absorption | Python CARL retires; all injection through Rust binary |
-| 7 | v1 Migration + Cutover | All v1 records in graph; dead JSON unreferenced |
-| 8 | Dashboard (optional) | Operator dashboard reads from SPARQL |
+Registered in `~/.base-gbl/base.toml`:
 
----
+```toml
+[[workspace]]
+path = "/home/user/my-workspace"
 
-## Design Decisions
+[[workspace]]
+path = "/home/user/another-workspace"
+```
 
-1. **Clean rebuild, not refactor** — lift concepts from v1, port nothing wholesale.
-2. **Injection-engine headline** — PM/CRUD supports; proactive context injection is the product.
-3. **Rust single binary** — CLI + hook handler + embedded Oxigraph. No wrapper scripts, no runtime deps.
-4. **CLI, not MCP server** — one surface for Claude, hooks, and user. Zero standing context cost.
-5. **TTL-is-the-store** — TriG text files, no separate database. Git-native, trivial at operator scale.
-6. **Hooks call CLI directly** — `base hook <event>` reads stdin, writes stdout. Fail-open on error.
-7. **Deterministic matching** — `domains.toml` keyword/path/exclude, no fuzzy/semantic matching in core.
-8. **CARL absorbed fully** — rules, decisions, domains, matching become graph entities; Python CARL retires.
-9. **Suppression layer is the product** — dedup, novelty gate, salience threshold, budget cap.
-10. **Three tiers as named graphs** — shared vocabulary global, instances per-tier, cross-tier edges.
-11. **Two write paths** — CLI (imperative, BASE-owned) + extraction (declarative, file-owned).
-12. **Pre-filtered SPARQL in hooks** — relevance is a query, not a firehose.
+Session start scans all registered workspaces for `paul.toml` project manifests and ingests them into the graph automatically.
 
 ---
 
-## References
+## Stack
 
-- Architecture decisions: `ARCHITECTURE.md`
-- v1: `apps/base/` (src/, data model, hooks)
-- v1 data shape: `.base/data/*.json`, `.base/workspace.json`
-- Ideation: `planning/base-v2/PLANNING.md`
+- **Language:** Rust (single binary, ~16MB release)
+- **Graph:** Embedded Oxigraph (in-memory, TriG-persisted)
+- **Query:** SPARQL SELECT/UPDATE
+- **Config:** TOML (domains.toml, base.toml, paul.toml)
+- **Persistence:** TriG text files (git-native, atomic write-back)
+- **Hooks:** stdin JSON → stdout injection, fail-open on all errors
 
 ---
-*Last updated: 2026-05-31*
+
+## Design Principles
+
+1. **Suppression, not detection.** Detection is trivial. The product is the gate that stays silent until the one thing that matters changes.
+2. **CLI, not MCP server.** One surface for Claude, hooks, and the user. Zero standing context cost.
+3. **Graph is the query layer, TOML is the authoring surface.** Operators edit TOML, the system queries the graph.
+4. **Fail-open.** Every hook catches all errors, logs to stderr, exits 0 with empty stdout. Never block Claude.
+5. **Mandatory edges.** No orphan entities. Every node connects to the relational fabric.
+6. **Deterministic matching.** Keywords, paths, excludes. No fuzzy/semantic matching in the core.
+
+---
+
+*Built by Chris Kahler · Chris AI Systems · https://chrisai.cv/skool*
