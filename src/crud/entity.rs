@@ -11,6 +11,8 @@ pub fn add(
     ns: &NamespaceConfig,
     name: &str,
     entity_type: &str,
+    domain: &str,
+    project: Option<&str>,
 ) -> Result<String> {
     let slug = crud::slugify(name);
     let iri = crud::build_iri(ns, "entity", &slug);
@@ -26,6 +28,18 @@ pub fn add(
         _ => format!("{p}:Entity"),
     };
 
+    // Build relational edges
+    let domain_iri = crud::build_iri(ns, "domain", &crud::slugify(domain));
+    let mut edge_triples = format!(
+        "      <{iri}> {p}:hasDomain <{domain_iri}> .\n"
+    );
+    if let Some(proj) = project {
+        let proj_iri = crud::build_iri(ns, "project", &crud::slugify(proj));
+        edge_triples.push_str(&format!(
+            "      <{iri}> {p}:relatedTo <{proj_iri}> .\n"
+        ));
+    }
+
     let sparql = format!(
         "INSERT DATA {{\n\
            GRAPH <{graph}> {{\n\
@@ -34,6 +48,7 @@ pub fn add(
                {p}:status \"active\" ;\n\
                {p}:createdAt \"{now}\"^^xsd:dateTime ;\n\
                {p}:lastActive \"{now}\"^^xsd:dateTime .\n\
+         {edge_triples}\
            }}\n\
          }}"
     );

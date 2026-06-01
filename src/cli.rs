@@ -185,13 +185,19 @@ pub enum DecisionAction {
 
 #[derive(Subcommand)]
 pub enum EntityAction {
-    /// Add an entity (person or organization)
+    /// Add an entity (person or organization) — must link to at least one domain or project
     Add {
         #[arg(long)]
         name: String,
         /// Type: person, organization
         #[arg(long, name = "type", default_value = "person")]
         entity_type: String,
+        /// Domain this entity relates to (REQUIRED — prevents orphan entities)
+        #[arg(long)]
+        domain: String,
+        /// Project this entity relates to (optional additional edge)
+        #[arg(long)]
+        project: Option<String>,
     },
     /// List all entities
     List,
@@ -346,9 +352,9 @@ pub fn run() {
 
         // ─── Entity ──────────────────────────────────────
         Some(Commands::Entity { action }) => match action {
-            EntityAction::Add { name, entity_type } => {
-                match crud::entity::add(&cwd, &config.namespace, &name, &entity_type) {
-                    Ok(slug) => println!("Entity '{name}' created (slug: {slug})"),
+            EntityAction::Add { name, entity_type, domain, project } => {
+                match crud::entity::add(&cwd, &config.namespace, &name, &entity_type, &domain, project.as_deref()) {
+                    Ok(slug) => println!("Entity '{name}' created (slug: {slug}, domain: {domain})"),
                     Err(e) => eprintln!("Failed: {e}"),
                 }
             }

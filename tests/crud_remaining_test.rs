@@ -8,7 +8,7 @@ fn ns() -> NamespaceConfig { NamespaceConfig::default() }
 #[test]
 fn entity_add_person() {
     let tmp = tempfile::tempdir().unwrap();
-    let slug = crud::entity::add(tmp.path(), &ns(), "Charlie", "person").unwrap();
+    let slug = crud::entity::add(tmp.path(), &ns(), "Charlie", "person", "GLOBAL", None).unwrap();
     assert_eq!(slug, "charlie");
 
     let trig = tmp.path().join(".base").join("graph.trig");
@@ -73,7 +73,7 @@ fn reminder_add_and_remove() {
 #[test]
 fn entity_update() {
     let tmp = tempfile::tempdir().unwrap();
-    crud::entity::add(tmp.path(), &ns(), "Charlie", "person").unwrap();
+    crud::entity::add(tmp.path(), &ns(), "Charlie", "person", "GLOBAL", None).unwrap();
     crud::entity::update(tmp.path(), &ns(), "charlie", Some("inactive"), None).unwrap();
 
     let trig = tmp.path().join(".base").join("graph.trig");
