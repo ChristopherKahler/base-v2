@@ -1,0 +1,26 @@
+{
+  "id": "sat_88fab371",
+  "name": "base-v2",
+  "version": "0.0.0",
+  "milestone": {
+    "name": "None",
+    "version": "0.0.0",
+    "status": "not_started"
+  },
+  "phase": {
+    "number": 0,
+    "name": "Rust Scaffold + Ontology",
+    "status": "complete"
+  },
+  "loop": {
+    "plan": null,
+    "position": "IDLE"
+  },
+  "timestamps": {
+    "created_at": "2026-05-29T12:40:21-05:00",
+    "updated_at": "2026-05-31T21:57:00-05:00"
+  },
+  "satellite": {
+    "groom": true
+  }
+}

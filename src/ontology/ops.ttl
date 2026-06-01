@@ -1,0 +1,205 @@
+## BASE v2 — ops: Ontology
+## Proactive context-injection engine vocabulary.
+##
+## Namespace: http://ops-sys.local/ontology#
+##
+## IRI scheme (path/slug-based, stable identity):
+##   Projects:   ops:project/{slug}         e.g. ops:project/casegate-v2
+##   Tasks:      ops:task/{project}/{slug}   e.g. ops:task/casegate-v2/fix-auth
+##   Decisions:  ops:decision/{domain}/{slug}
+##   Entities:   ops:entity/{slug}           e.g. ops:entity/chris-kahler
+##   Workspaces: ops:workspace/{slug}        e.g. ops:workspace/chris-ai-systems
+##   Domains:    ops:domain/{slug}            e.g. ops:domain/casegate
+##   Rules:      ops:rule/{domain}/{n}        e.g. ops:rule/casegate/0
+##   Goals:      ops:goal/{slug}
+##   Reminders:  ops:reminder/{slug}
+##   Documents:  ops:document/{path-hash}
+##   PaulProjects: ops:paul/{slug}
+##
+## Named graphs:
+##   ops:graph/global            → .base-gbl/graph.trig
+##   ops:graph/ws/{slug}         → {workspace}/.base/graph.trig
+
+@prefix ops:  <http://ops-sys.local/ontology#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix owl:  <http://www.w3.org/2002/07/owl#> .
+
+# ─── Classes ──────────────────────────────────────────────
+
+ops:Project       rdf:type rdfs:Class ;
+                  rdfs:label "Project" ;
+                  rdfs:comment "A tracked project (app, framework, tracking)" .
+
+ops:App           rdf:type rdfs:Class ;
+                  rdfs:subClassOf ops:Project ;
+                  rdfs:label "App" .
+
+ops:Framework     rdf:type rdfs:Class ;
+                  rdfs:subClassOf ops:Project ;
+                  rdfs:label "Framework" .
+
+ops:TrackingProject rdf:type rdfs:Class ;
+                    rdfs:subClassOf ops:Project ;
+                    rdfs:label "TrackingProject" .
+
+ops:Task          rdf:type rdfs:Class ;
+                  rdfs:label "Task" .
+
+ops:Decision      rdf:type rdfs:Class ;
+                  rdfs:label "Decision" ;
+                  rdfs:comment "A recorded decision with rationale and recall context" .
+
+ops:Entity        rdf:type rdfs:Class ;
+                  rdfs:label "Entity" ;
+                  rdfs:comment "A person, organization, or named thing" .
+
+ops:Person        rdf:type rdfs:Class ;
+                  rdfs:subClassOf ops:Entity ;
+                  rdfs:label "Person" .
+
+ops:Organization  rdf:type rdfs:Class ;
+                  rdfs:subClassOf ops:Entity ;
+                  rdfs:label "Organization" .
+
+ops:Goal          rdf:type rdfs:Class ;
+                  rdfs:label "Goal" ;
+                  rdfs:comment "A measurable objective with target and current values" .
+
+ops:Reminder      rdf:type rdfs:Class ;
+                  rdfs:label "Reminder" .
+
+ops:Workspace     rdf:type rdfs:Class ;
+                  rdfs:label "Workspace" ;
+                  rdfs:comment "A workspace directory registered in the global tier" .
+
+ops:Domain        rdf:type rdfs:Class ;
+                  rdfs:label "Domain" ;
+                  rdfs:comment "A domain-matching rule group from domains.toml" .
+
+ops:Rule          rdf:type rdfs:Class ;
+                  rdfs:label "Rule" ;
+                  rdfs:comment "A single rule within a domain" .
+
+ops:Document      rdf:type rdfs:Class ;
+                  rdfs:label "Document" ;
+                  rdfs:comment "A knowledge document extracted via MOP (frontmatter)" .
+
+ops:PaulProject   rdf:type rdfs:Class ;
+                  rdfs:label "PaulProject" ;
+                  rdfs:comment "A PAUL-managed project indexed read-only from paul.json" .
+
+# ─── Core predicates ──────────────────────────────────────
+
+ops:name          rdf:type rdf:Property ;
+                  rdfs:domain rdfs:Resource ;
+                  rdfs:range xsd:string ;
+                  rdfs:label "name" .
+
+ops:description   rdf:type rdf:Property ;
+                  rdfs:domain rdfs:Resource ;
+                  rdfs:range xsd:string ;
+                  rdfs:label "description" .
+
+ops:status        rdf:type rdf:Property ;
+                  rdfs:domain rdfs:Resource ;
+                  rdfs:range xsd:string ;
+                  rdfs:comment "Values: active, completed, blocked, deferred, superseded, archived" .
+
+ops:priority      rdf:type rdf:Property ;
+                  rdfs:domain rdfs:Resource ;
+                  rdfs:range xsd:string ;
+                  rdfs:comment "Values: urgent, high, medium, low" .
+
+ops:lastActive    rdf:type rdf:Property ;
+                  rdfs:range xsd:dateTime ;
+                  rdfs:comment "Timestamp of last activity on this entity" .
+
+ops:createdAt     rdf:type rdf:Property ;
+                  rdfs:range xsd:dateTime .
+
+ops:updatedAt     rdf:type rdf:Property ;
+                  rdfs:range xsd:dateTime .
+
+# ─── Relationship predicates ──────────────────────────────
+
+ops:supersedes    rdf:type rdf:Property ;
+                  rdfs:comment "Points to the prior version this entity replaced" .
+
+ops:supersededBy  rdf:type rdf:Property ;
+                  rdfs:comment "Inverse of supersedes" .
+
+ops:belongsTo     rdf:type rdf:Property ;
+                  rdfs:range ops:Workspace ;
+                  rdfs:comment "Entity → workspace membership" .
+
+ops:hasDomain     rdf:type rdf:Property ;
+                  rdfs:range ops:Domain ;
+                  rdfs:comment "Project/workspace → domain association" .
+
+ops:hasRule       rdf:type rdf:Property ;
+                  rdfs:domain ops:Domain ;
+                  rdfs:range ops:Rule ;
+                  rdfs:comment "Domain → rule containment" .
+
+ops:hasGoal       rdf:type rdf:Property ;
+                  rdfs:range ops:Goal ;
+                  rdfs:comment "Entity → goal linkage (cross-tier)" .
+
+ops:hasTask       rdf:type rdf:Property ;
+                  rdfs:domain ops:Project ;
+                  rdfs:range ops:Task ;
+                  rdfs:comment "Project → task containment" .
+
+ops:hasProject    rdf:type rdf:Property ;
+                  rdfs:domain ops:Workspace ;
+                  rdfs:range ops:Project ;
+                  rdfs:comment "Workspace → project containment" .
+
+# ─── Scalar predicates ────────────────────────────────────
+
+ops:blockedBy     rdf:type rdf:Property ;
+                  rdfs:range xsd:string ;
+                  rdfs:comment "Free-text blocker description" .
+
+ops:nextAction    rdf:type rdf:Property ;
+                  rdfs:range xsd:string .
+
+ops:revenue       rdf:type rdf:Property ;
+                  rdfs:range xsd:string ;
+                  rdfs:comment "Revenue description (e.g. '$33/mo recurring')" .
+
+ops:dueDate       rdf:type rdf:Property ;
+                  rdfs:range xsd:date .
+
+ops:staleThreshold rdf:type rdf:Property ;
+                   rdfs:range xsd:integer ;
+                   rdfs:comment "Days before entity is considered stale" .
+
+ops:rationale     rdf:type rdf:Property ;
+                  rdfs:range xsd:string ;
+                  rdfs:comment "Rationale for a decision" .
+
+ops:recall        rdf:type rdf:Property ;
+                  rdfs:range xsd:string ;
+                  rdfs:comment "Recall/trigger context for a decision" .
+
+ops:ruleText      rdf:type rdf:Property ;
+                  rdfs:domain ops:Rule ;
+                  rdfs:range xsd:string ;
+                  rdfs:comment "The rule content text" .
+
+ops:triggerKeyword rdf:type rdf:Property ;
+                   rdfs:domain ops:Domain ;
+                   rdfs:range xsd:string ;
+                   rdfs:comment "A keyword that activates this domain" .
+
+ops:triggerPath   rdf:type rdf:Property ;
+                  rdfs:domain ops:Domain ;
+                  rdfs:range xsd:string ;
+                  rdfs:comment "A path glob that activates this domain" .
+
+ops:path          rdf:type rdf:Property ;
+                  rdfs:range xsd:string ;
+                  rdfs:comment "Filesystem path associated with this entity" .

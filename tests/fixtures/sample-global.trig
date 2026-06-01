@@ -1,0 +1,28 @@
+@prefix ops:  <http://ops-sys.local/ontology#> .
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ws:   <http://ops-sys.local/ontology#workspace/> .
+@prefix goal: <http://ops-sys.local/ontology#goal/> .
+@prefix ent:  <http://ops-sys.local/ontology#entity/> .
+@prefix g:    <http://ops-sys.local/ontology#graph/> .
+
+GRAPH g:global {
+
+    ws:chris-ai-systems
+        rdf:type ops:Workspace ;
+        ops:name "chris-ai-systems" ;
+        ops:description "Primary business workspace — Chris AI Systems brand" ;
+        ops:path "/home/chriskahler/chris-ai-systems" .
+
+    goal:north-star
+        rdf:type ops:Goal ;
+        ops:name "North Star" ;
+        ops:description "$7k+/month on 25 hours/week or less" ;
+        ops:status "active" ;
+        ops:priority "urgent" .
+
+    ent:chris-kahler
+        rdf:type ops:Person ;
+        ops:name "Chris Kahler" ;
+        ops:description "Operator / founder" .
+}

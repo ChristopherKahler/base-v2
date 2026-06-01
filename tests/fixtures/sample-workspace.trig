@@ -1,0 +1,52 @@
+@prefix ops:  <http://ops-sys.local/ontology#> .
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix proj: <http://ops-sys.local/ontology#project/> .
+@prefix task: <http://ops-sys.local/ontology#task/> .
+@prefix dec:  <http://ops-sys.local/ontology#decision/> .
+@prefix ws:   <http://ops-sys.local/ontology#workspace/> .
+@prefix goal: <http://ops-sys.local/ontology#goal/> .
+@prefix gws:  <http://ops-sys.local/ontology#graph/ws/> .
+
+GRAPH gws:chris-ai-systems {
+
+    proj:casegate-v2
+        rdf:type ops:App ;
+        ops:name "CaseGate v2" ;
+        ops:description "Legal intake SaaS" ;
+        ops:status "active" ;
+        ops:priority "high" ;
+        ops:revenue "$subscription recurring" ;
+        ops:nextAction "Charlie finishing UAT" ;
+        ops:belongsTo ws:chris-ai-systems ;
+        ops:hasGoal goal:north-star ;
+        ops:lastActive "2026-05-31T12:00:00-05:00"^^xsd:dateTime ;
+        ops:staleThreshold 3 .
+
+    proj:skool-community
+        rdf:type ops:TrackingProject ;
+        ops:name "Skool — AI Builders & Operators" ;
+        ops:description "Community building" ;
+        ops:status "blocked" ;
+        ops:priority "urgent" ;
+        ops:blockedBy "28-day challenge design incomplete" ;
+        ops:belongsTo ws:chris-ai-systems ;
+        ops:lastActive "2026-04-15T10:00:00-05:00"^^xsd:dateTime ;
+        ops:staleThreshold 3 .
+
+    task:casegate-v2.cloudflare-email
+        rdf:type ops:Task ;
+        ops:name "Cloudflare email config tweaks" ;
+        ops:status "active" ;
+        ops:priority "medium" .
+
+    proj:casegate-v2 ops:hasTask task:casegate-v2.cloudflare-email .
+
+    dec:global.solo-rebrand
+        rdf:type ops:Decision ;
+        ops:name "Solo rebrand to Chris AI Systems" ;
+        ops:rationale "Partnership dissolved 2026-04-22" ;
+        ops:recall "brand, partnership, charlie" ;
+        ops:status "active" ;
+        ops:createdAt "2026-04-23T00:00:00-05:00"^^xsd:dateTime .
+}
