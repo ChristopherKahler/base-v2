@@ -55,6 +55,52 @@ pub struct BaseConfig {
     pub sync: SyncConfig,
     #[serde(default)]
     pub signal: SignalConfig,
+    #[serde(default)]
+    pub bracket: BracketConfig,
+    #[serde(default)]
+    pub devmode: DevmodeConfig,
+}
+
+// ─── Context Bracket Config ─────────────────────────────────
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct BracketConfig {
+    #[serde(default = "default_fresh_until")]
+    pub fresh_until: u32,
+    #[serde(default = "default_moderate_until")]
+    pub moderate_until: u32,
+    #[serde(default = "default_depleted_until")]
+    pub depleted_until: u32,
+    #[serde(default = "default_refresh_interval")]
+    pub refresh_interval: u32,
+    #[serde(default = "default_bracket_enabled")]
+    pub enabled: bool,
+}
+
+fn default_fresh_until() -> u32 { 3 }
+fn default_moderate_until() -> u32 { 10 }
+fn default_depleted_until() -> u32 { 20 }
+fn default_refresh_interval() -> u32 { 5 }
+fn default_bracket_enabled() -> bool { true }
+
+impl Default for BracketConfig {
+    fn default() -> Self {
+        Self {
+            fresh_until: default_fresh_until(),
+            moderate_until: default_moderate_until(),
+            depleted_until: default_depleted_until(),
+            refresh_interval: default_refresh_interval(),
+            enabled: default_bracket_enabled(),
+        }
+    }
+}
+
+// ─── Devmode Config ─────────────────────────────────────────
+
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct DevmodeConfig {
+    #[serde(default)]
+    pub enabled: bool,
 }
 
 // ─── Signal Config ───────────────────────────────────────────

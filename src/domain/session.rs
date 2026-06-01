@@ -1,8 +1,34 @@
 use std::collections::HashMap;
+use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
+
+use crate::config::BracketConfig;
+
+// ─── Context Bracket ────────────────────────────────────────
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Bracket {
+    Fresh,
+    Moderate,
+    Depleted,
+    Critical,
+}
+
+impl fmt::Display for Bracket {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Fresh => write!(f, "FRESH"),
+            Self::Moderate => write!(f, "MODERATE"),
+            Self::Depleted => write!(f, "DEPLETED"),
+            Self::Critical => write!(f, "CRITICAL"),
+        }
+    }
+}
+
+// ─── Session State ──────────────────────────────────────────
 
 /// Tracks which domains have been injected in the current session.
 /// Stored at `.base/.session` (JSON). Session-start clears it.
@@ -11,6 +37,9 @@ pub struct SessionState {
     /// domain name → rules hash (for change detection)
     #[serde(default)]
     pub injected: HashMap<String, u64>,
+    /// Number of user prompts in this session (for bracket calculation)
+    #[serde(default)]
+    pub prompt_count: u32,
 }
 
 impl SessionState {
@@ -46,6 +75,44 @@ impl SessionState {
     pub fn mark_injected(&mut self, domain: &str, hash: u64) {
         self.injected.insert(domain.to_string(), hash);
     }
+
+    /// Increment prompt count and return the new value.
+    pub fn increment_prompt(&mut self) -> u32 {
+        self.prompt_count += 1;
+        self.prompt_count
+    }
+
+    /// Derive context bracket from prompt count and config thresholds.
+    pub fn bracket(&self, config: &BracketConfig) -> Bracket {
+        if !config.enabled {
+            return Bracket::Moderate; // default when brackets disabled
+        }
+        if self.prompt_count <= config.fresh_until {
+            Bracket::Fresh
+        } else if self.prompt_count <= config.moderate_until {
+            Bracket::Moderate
+        } else if self.prompt_count <= config.depleted_until {
+            Bracket::Depleted
+        } else {
+            Bracket::Critical
+        }
+    }
+
+    /// Whether to force-refresh dedup (re-inject all domains) this prompt.
+    /// True when DEPLETED or CRITICAL AND prompt lands on the refresh interval.
+    pub fn should_force_refresh(&self, config: &BracketConfig) -> bool {
+        if !config.enabled || config.refresh_interval == 0 {
+            return false;
+        }
+        let bracket = self.bracket(config);
+        matches!(bracket, Bracket::Depleted | Bracket::Critical)
+            && self.prompt_count.is_multiple_of(config.refresh_interval)
+    }
+
+    /// Clear all dedup state (used for force-refresh).
+    pub fn clear_dedup(&mut self) {
+        self.injected.clear();
+    }
 }
 
 /// Compute a hash of rule texts for change detection.
@@ -61,6 +128,10 @@ pub fn rules_hash(rules: &[String]) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn default_bracket_config() -> BracketConfig {
+        BracketConfig::default()
+    }
 
     #[test]
     fn session_state_roundtrip() {
@@ -94,5 +165,111 @@ mod tests {
         let h3 = rules_hash(&["Rule A".into(), "Rule B".into()]);
         assert_ne!(h1, h2);
         assert_eq!(h1, h3);
+    }
+
+    #[test]
+    fn prompt_count_increments() {
+        let mut state = SessionState::default();
+        assert_eq!(state.prompt_count, 0);
+        assert_eq!(state.increment_prompt(), 1);
+        assert_eq!(state.increment_prompt(), 2);
+        assert_eq!(state.prompt_count, 2);
+    }
+
+    #[test]
+    fn prompt_count_persists_across_save_load() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut state = SessionState::default();
+        state.increment_prompt();
+        state.increment_prompt();
+        state.increment_prompt();
+        state.save(tmp.path()).unwrap();
+
+        let loaded = SessionState::load(tmp.path());
+        assert_eq!(loaded.prompt_count, 3);
+    }
+
+    #[test]
+    fn bracket_transitions_at_thresholds() {
+        let cfg = default_bracket_config(); // fresh_until=3, moderate=10, depleted=20
+        let mut state = SessionState::default();
+
+        // prompt 0 → FRESH
+        assert_eq!(state.bracket(&cfg), Bracket::Fresh);
+
+        // prompts 1-3 → FRESH
+        state.prompt_count = 1;
+        assert_eq!(state.bracket(&cfg), Bracket::Fresh);
+        state.prompt_count = 3;
+        assert_eq!(state.bracket(&cfg), Bracket::Fresh);
+
+        // prompt 4 → MODERATE
+        state.prompt_count = 4;
+        assert_eq!(state.bracket(&cfg), Bracket::Moderate);
+        state.prompt_count = 10;
+        assert_eq!(state.bracket(&cfg), Bracket::Moderate);
+
+        // prompt 11 → DEPLETED
+        state.prompt_count = 11;
+        assert_eq!(state.bracket(&cfg), Bracket::Depleted);
+        state.prompt_count = 20;
+        assert_eq!(state.bracket(&cfg), Bracket::Depleted);
+
+        // prompt 21 → CRITICAL
+        state.prompt_count = 21;
+        assert_eq!(state.bracket(&cfg), Bracket::Critical);
+        state.prompt_count = 100;
+        assert_eq!(state.bracket(&cfg), Bracket::Critical);
+    }
+
+    #[test]
+    fn bracket_disabled_returns_moderate() {
+        let mut cfg = default_bracket_config();
+        cfg.enabled = false;
+        let mut state = SessionState::default();
+        state.prompt_count = 1;
+        assert_eq!(state.bracket(&cfg), Bracket::Moderate);
+        state.prompt_count = 50;
+        assert_eq!(state.bracket(&cfg), Bracket::Moderate);
+    }
+
+    #[test]
+    fn force_refresh_on_depleted_interval() {
+        let cfg = default_bracket_config(); // refresh_interval=5, depleted_until=20
+        let mut state = SessionState::default();
+
+        // FRESH — no refresh
+        state.prompt_count = 3;
+        assert!(!state.should_force_refresh(&cfg));
+
+        // MODERATE — no refresh
+        state.prompt_count = 10;
+        assert!(!state.should_force_refresh(&cfg));
+
+        // DEPLETED, not on interval
+        state.prompt_count = 11;
+        assert!(!state.should_force_refresh(&cfg));
+
+        // DEPLETED, on interval (15 % 5 == 0)
+        state.prompt_count = 15;
+        assert!(state.should_force_refresh(&cfg));
+
+        // CRITICAL, on interval (25 % 5 == 0)
+        state.prompt_count = 25;
+        assert!(state.should_force_refresh(&cfg));
+
+        // CRITICAL, not on interval
+        state.prompt_count = 23;
+        assert!(!state.should_force_refresh(&cfg));
+    }
+
+    #[test]
+    fn clear_dedup_empties_injected() {
+        let mut state = SessionState::default();
+        state.mark_injected("a", 1);
+        state.mark_injected("b", 2);
+        assert!(!state.injected.is_empty());
+        state.clear_dedup();
+        assert!(state.injected.is_empty());
     }
 }

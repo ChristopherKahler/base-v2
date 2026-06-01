@@ -7,7 +7,7 @@ use crate::config::BaseConfig;
 use crate::crud;
 use crate::domain;
 use crate::domain::matcher::match_domains;
-use crate::domain::session::{rules_hash, SessionState};
+use crate::domain::session::{rules_hash, Bracket, SessionState};
 
 pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Result<()> {
     let prompt = extract_prompt(event);
@@ -26,11 +26,24 @@ pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Res
         .map(SessionState::load)
         .unwrap_or_default();
 
+    // Track prompt count and derive bracket
+    session.increment_prompt();
+    let bracket = session.bracket(&config.bracket);
+
+    // Force-refresh dedup in DEPLETED/CRITICAL on interval
+    if session.should_force_refresh(&config.bracket) {
+        session.clear_dedup();
+    }
+
     // Gather active file paths from graph (if available)
     let active_paths = gather_active_paths(config, cwd);
 
     let matched = match_domains(&prompt, &domains, &session, &active_paths);
     if matched.is_empty() {
+        // Still save session state (prompt_count) even if nothing matched
+        if let Some(ref base_dir) = base_dir {
+            let _ = session.save(base_dir);
+        }
         return Ok(());
     }
 
@@ -40,12 +53,31 @@ pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Res
     // Try to load the graph for graph-backed injection
     let graph_store = load_workspace_graph(cwd);
 
+    // Emit context bracket tag
+    let mut output = format!(
+        "<context-bracket>[{}] (prompt {})</context-bracket>\n\n",
+        bracket, session.prompt_count
+    );
+
+    // Determine if we're in lean mode (FRESH, first 2 prompts — rules only, skip neighborhood)
+    let lean_mode = bracket == Bracket::Fresh && session.prompt_count <= 2;
+
+    // Track injection metadata for DEVMODE
+    let mut loaded_domains: Vec<(String, String, usize)> = Vec::new(); // (name, match_reason, rule_count)
+    let mut deduped_count = 0usize;
+
     // Format and emit matched rules
-    let mut output = String::new();
     for domain_def in &matched {
         // Try graph-backed injection first, fall back to TOML rules
         let (rules_text, neighborhood_text) = match &graph_store {
-            Some(store) => query_domain_from_graph(store, config, domain_def),
+            Some(store) => {
+                let (r, n) = query_domain_from_graph(store, config, domain_def);
+                if lean_mode {
+                    (r, String::new()) // skip neighborhood in lean mode
+                } else {
+                    (r, n)
+                }
+            }
             None => (format_toml_rules(domain_def), String::new()),
         };
 
@@ -73,8 +105,25 @@ pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Res
                 .collect::<Vec<_>>(),
         );
         if session.is_injected(&domain_def.name, combined_hash) {
+            deduped_count += 1;
+            loaded_domains.push((
+                domain_def.name.clone(),
+                "dedup".into(),
+                domain_def.rules.len(),
+            ));
             continue;
         }
+
+        let match_reason = if domain_def.is_always() {
+            "always_on".to_string()
+        } else {
+            "matched".to_string()
+        };
+        loaded_domains.push((
+            domain_def.name.clone(),
+            match_reason,
+            domain_def.rules.len(),
+        ));
 
         output.push_str(&domain_output);
         output.push('\n');
@@ -88,6 +137,17 @@ pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Res
         }
     }
 
+    // DEVMODE block (Task 2 will populate this fully)
+    if config.devmode.enabled {
+        output.push_str(&format_devmode_block(
+            &loaded_domains,
+            &domains,
+            bracket,
+            session.prompt_count,
+            deduped_count,
+        ));
+    }
+
     // Save updated session state
     if let Some(ref base_dir) = base_dir {
         let _ = session.save(base_dir);
@@ -98,6 +158,61 @@ pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Res
     }
 
     Ok(())
+}
+
+// ─── DEVMODE output ─────────────────────────────────────────
+
+/// Format the DEVMODE instruction block for Claude.
+pub fn format_devmode_block(
+    loaded: &[(String, String, usize)],
+    all_domains: &[domain::DomainDef],
+    bracket: Bracket,
+    prompt_count: u32,
+    deduped: usize,
+) -> String {
+    let mut out = String::new();
+    out.push_str("\n⚠️ DEVMODE=true ⚠️\n");
+    out.push_str("MANDATORY: Append a DEVMODE block at the end of EVERY response.\n\n");
+
+    // Bracket info
+    out.push_str(&format!(
+        "CONTEXT BRACKET: [{bracket}] (prompt {prompt_count})\n\n"
+    ));
+
+    // Loaded domains
+    out.push_str("LOADED DOMAINS:\n");
+    for (name, reason, rule_count) in loaded {
+        if reason == "dedup" {
+            out.push_str(&format!(
+                "  [{name}] dedup (prompt {prompt_count})\n"
+            ));
+        } else {
+            out.push_str(&format!(
+                "  [{name}] {reason} ({rule_count} rules)\n"
+            ));
+        }
+    }
+
+    // Available (not loaded) domains
+    let loaded_names: Vec<&str> = loaded.iter().map(|(n, _, _)| n.as_str()).collect();
+    let available: Vec<&domain::DomainDef> = all_domains
+        .iter()
+        .filter(|d| !loaded_names.contains(&d.name.as_str()) && !d.is_always())
+        .collect();
+
+    if !available.is_empty() {
+        out.push_str("\nAVAILABLE (not loaded):\n");
+        for d in &available {
+            let kws = d.prompt_keywords.join(", ");
+            out.push_str(&format!("  {} ({})\n", d.name, kws));
+        }
+    }
+
+    if deduped > 0 {
+        out.push_str(&format!("\nDEDUP: {deduped} domain(s) skipped (unchanged)\n"));
+    }
+
+    out
 }
 
 // ─── Graph-backed injection ─────────────────────────────────

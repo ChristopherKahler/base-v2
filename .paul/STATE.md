@@ -11,9 +11,9 @@ See: .paul/PROJECT.md (updated 2026-06-01)
 
 Milestone: v0.1 Proactive Context Engine
 Phase: 6 of 8 (CARL Absorption) — In Progress
-Plan: 06-01 complete (PLAN → APPLY → UNIFY closed)
-Status: Ready for next PLAN (06-02: DEVMODE + Context Brackets)
-Last activity: 2026-06-01 12:55 — UNIFY closed loop on Plan 06-01
+Plan: 06-02 complete (PLAN → APPLY → UNIFY closed)
+Status: Ready for next PLAN (06-03: base learn)
+Last activity: 2026-06-01 13:18 — UNIFY closed loop on Plan 06-02
 
 Progress:
 - Milestone: [██████░░░░] 66%
@@ -23,7 +23,7 @@ Progress:
 - Phase 3: [██████████] 100% ✓
 - Phase 4: [██████████] 100% ✓
 - Phase 5: [██████████] 100% ✓
-- Phase 6: [███░░░░░░░] 25%
+- Phase 6: [█████░░░░░] 50%
 
 ## Loop Position
 
@@ -74,10 +74,10 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-06-01 12:55
-Stopped at: Plan 06-01 loop closed — graph-backed rules shipped
-Next action: /paul:plan for Plan 06-02 (DEVMODE + Context Brackets)
-Resume file: .paul/phases/06-carl-absorption/06-01-SUMMARY.md
+Last session: 2026-06-01 13:18
+Stopped at: Plan 06-02 loop closed — DEVMODE + context brackets shipped
+Next action: /paul:plan for Plan 06-03 (base learn)
+Resume file: .paul/phases/06-carl-absorption/06-02-SUMMARY.md
 
 ---
 *STATE.md — Updated after every significant action*

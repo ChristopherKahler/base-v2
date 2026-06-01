@@ -20,7 +20,7 @@ Phases: 6 of 9 complete
 | 3 | Write Commands (CRUD) | 02 | Complete ✓ | 2026-06-01 |
 | 4 | Extraction Layer | 01 | Complete ✓ | 2026-06-01 |
 | 5 | Signal Layer (proof) | 01 | Complete ✓ | 2026-06-01 |
-| 6 | CARL Absorption | 01 | Planning | - |
+| 6 | CARL Absorption | 02 | In progress | - |
 | 7 | v1 Migration + Cutover | TBD | Not started | - |
 | 8 | Dashboard (optional) | TBD | Not started | - |
 
