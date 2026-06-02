@@ -67,6 +67,143 @@ pub fn run(carl_json_path: Option<&Path>, skip_hooks: bool) -> Result<()> {
     Ok(())
 }
 
+// ─── Uninstall ──────────────────────────────────────────────
+
+/// Remove base hooks from settings.json, remove binary, strip CLAUDE.md section.
+/// With --purge, also removes ~/.base-gbl/ global tier.
+pub fn uninstall(purge: bool) -> Result<()> {
+    let home = dirs::home_dir().context("Cannot determine home directory")?;
+
+    println!("═══════════════════════════════════════");
+    println!("BASE v2 — Uninstall");
+    println!("═══════════════════════════════════════\n");
+
+    // 1. Remove hooks from settings.json
+    let settings_path = home.join(".claude").join("settings.json");
+    remove_hooks(&settings_path)?;
+
+    // 2. Remove BASE CLI section from CLAUDE.md
+    let claude_md = home.join(".claude").join("CLAUDE.md");
+    remove_claude_md_section(&claude_md)?;
+
+    // 3. Remove binary
+    let binary = home.join(".local").join("bin").join("base");
+    if binary.exists() {
+        print!("3. Remove binary ... ");
+        std::fs::remove_file(&binary)?;
+        println!("✓ removed {}", binary.display());
+    } else {
+        println!("3. Binary not found at {} — skipped", binary.display());
+    }
+
+    // 4. Purge global tier if requested
+    if purge {
+        let global_dir = home.join(".base-gbl");
+        if global_dir.exists() {
+            print!("4. Purge global tier ... ");
+            std::fs::remove_dir_all(&global_dir)?;
+            println!("✓ removed {}", global_dir.display());
+        }
+    } else {
+        println!("4. Global tier preserved (~/.base-gbl/) — use --purge to remove");
+    }
+
+    println!("\n═══════════════════════════════════════");
+    println!("✓ Uninstall complete");
+    println!("═══════════════════════════════════════\n");
+    println!("Workspace .base/ directories are untouched.");
+    println!("Remove them manually if needed: rm -rf <workspace>/.base/");
+
+    Ok(())
+}
+
+fn remove_hooks(settings_path: &Path) -> Result<()> {
+    print!("1. Remove hooks from settings.json ... ");
+
+    if !settings_path.exists() {
+        println!("not found — skipped");
+        return Ok(());
+    }
+
+    let content = std::fs::read_to_string(settings_path)?;
+    if !content.contains("base hook") {
+        println!("no base hooks found — skipped");
+        return Ok(());
+    }
+
+    let mut settings: serde_json::Value = serde_json::from_str(&content)?;
+
+    if let Some(hooks) = settings.get_mut("hooks").and_then(|h| h.as_object_mut()) {
+        for (_event, entries) in hooks.iter_mut() {
+            if let Some(arr) = entries.as_array_mut() {
+                arr.retain(|entry| {
+                    // Remove any entry whose hooks array contains a "base hook" command
+                    if let Some(hook_list) = entry.get("hooks").and_then(|h| h.as_array()) {
+                        !hook_list.iter().any(|h| {
+                            h.get("command")
+                                .and_then(|c| c.as_str())
+                                .map(|c| c.contains("base hook"))
+                                .unwrap_or(false)
+                        })
+                    } else {
+                        true
+                    }
+                });
+            }
+        }
+    }
+
+    let tmp = settings_path.with_extension("json.tmp");
+    let formatted = serde_json::to_string_pretty(&settings)?;
+    std::fs::write(&tmp, &formatted)?;
+    std::fs::rename(&tmp, settings_path)?;
+
+    println!("✓ removed all base hook entries");
+    Ok(())
+}
+
+fn remove_claude_md_section(claude_md_path: &Path) -> Result<()> {
+    print!("2. Remove BASE CLI section from CLAUDE.md ... ");
+
+    if !claude_md_path.exists() {
+        println!("not found — skipped");
+        return Ok(());
+    }
+
+    let content = std::fs::read_to_string(claude_md_path)?;
+
+    if !content.contains("## BASE CLI") {
+        println!("not present — skipped");
+        return Ok(());
+    }
+
+    // Find and remove the BASE CLI section (from "## BASE CLI" to end of file or next ## heading)
+    let mut lines: Vec<&str> = content.lines().collect();
+    let start = lines.iter().position(|l| l.starts_with("## BASE CLI"));
+
+    if let Some(start_idx) = start {
+        // Find the next ## heading after the BASE CLI section (or end of file)
+        let end = lines[start_idx + 1..]
+            .iter()
+            .position(|l| l.starts_with("## ") && !l.starts_with("### "))
+            .map(|pos| start_idx + 1 + pos)
+            .unwrap_or(lines.len());
+
+        lines.drain(start_idx..end);
+
+        let new_content = lines.join("\n");
+        let tmp = claude_md_path.with_extension("md.tmp");
+        std::fs::write(&tmp, new_content.trim_end())?;
+        std::fs::rename(&tmp, claude_md_path)?;
+
+        println!("✓ removed");
+    } else {
+        println!("not found — skipped");
+    }
+
+    Ok(())
+}
+
 // ─── Step 1: Install binary ─────────────────────────────────
 
 fn install_binary(binary: &Path, dest: &Path, bin_dir: &Path) -> Result<()> {

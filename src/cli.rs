@@ -132,6 +132,12 @@ pub enum Commands {
         #[arg(long)]
         skip_hooks: bool,
     },
+    /// Uninstall base: remove hooks from settings.json, remove binary, remove CLAUDE.md section
+    Uninstall {
+        /// Also remove ~/.base-gbl/ global tier (destructive)
+        #[arg(long)]
+        purge: bool,
+    },
     /// Scaffold a new workspace: create .base/, write configs, register globally
     Scaffold {
         /// Target directory (defaults to cwd)
@@ -775,6 +781,13 @@ pub fn run() {
             let carl_path = carl.as_ref().map(std::path::Path::new);
             if let Err(e) = base::install::run(carl_path, skip_hooks) {
                 eprintln!("Install failed: {e}");
+            }
+        }
+
+        // ─── Uninstall ────────────────────────────────────────
+        Some(Commands::Uninstall { purge }) => {
+            if let Err(e) = base::install::uninstall(purge) {
+                eprintln!("Uninstall failed: {e}");
             }
         }
 
