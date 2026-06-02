@@ -5,18 +5,18 @@
 See: .paul/PROJECT.md (updated 2026-06-01)
 
 **Core value:** Proactive, deterministic context-injection engine — suppression, not detection. The gate that stays silent until the one thing that matters changes.
-**Current focus:** Phase 8 in progress. Dashboard server + Graph Explorer shipped. Rich markdown extraction + MOP hook + edge repair live.
+**Current focus:** Phase 8 in progress. Dashboard: Graph Explorer + Operations (drag-drop kanban) + Session Activity (WebSocket) live. Usage Analytics next.
 
 ## Current Position
 
 Milestone: v0.1 Proactive Context Engine
-Phase: 8 of 8 (Command Center Dashboard) — Planning
-Plan: 08-03 created, awaiting approval
-Status: PLAN created, ready for APPLY
-Last activity: 2026-06-02 14:15 — Created Plan 08-03 (WebSocket session activity + drag-drop kanban)
+Phase: 8 of 8 (Command Center Dashboard) — In Progress
+Plan: 08-03 complete (WebSocket session activity + drag-drop kanban). Ready for Plan 04.
+Status: Loop closed. Ready for next PLAN.
+Last activity: 2026-06-02 15:32 — Plan 08-03 shipped (session activity panel + drag-drop kanban + sync fix + README)
 
 Progress:
-- Milestone: [█████████░] 98%
+- Milestone: [█████████░] 99%
 - Phase 0: [██████████] 100% ✓
 - Phase 1: [██████████] 100% ✓
 - Phase 2: [██████████] 100% ✓
@@ -25,20 +25,20 @@ Progress:
 - Phase 5: [██████████] 100% ✓
 - Phase 6: [██████████] 100% ✓
 - Phase 7: [██████████] 100% ✓
-- Phase 8: [██████░░░░] 66%
+- Phase 8: [████████░░] 83%
 
 ## Loop Position
 
 Current loop state:
 ```
 PLAN ──▶ APPLY ──▶ UNIFY
-  ✓        ○        ○     [Plan 08-03 created, awaiting approval]
+  ✓        ✓        ✓     [Plan 08-03 complete — ready for Plan 04]
 ```
 
 ## Accumulated Context
 
 ### Decisions
-47 decisions (6 new this session):
+51 decisions (4 new this session):
 - (prior 30 decisions carried forward)
 - Milestone slugs use project.milestone dot notation matching task convention
 - resolve_slug skips IRI construction for inputs with spaces (invalid IRI)
@@ -57,15 +57,19 @@ PLAN ──▶ APPLY ──▶ UNIFY
 - 0.0.0.0 bind for WSL2 — localhost forwarding unreliable
 - Custom left-edge resize on detail panel — CSS resize only goes bottom-right
 - OperatorNotes planned for Plan 02 — first dashboard write mutation
+- Session-grouped cards over flat event log — raw telemetry is noise
+- File-tailing via line-count over byte-offset seeking — simpler, no edge cases
+- HookEventData return type on user_prompt_submit — domain match data without refactoring all handlers
+- Cache-Control: no-cache on index.html — prevents stale JS bundles
 
 ### Deferred Issues
-- AST data needs re-extraction to reflect Plans 01-02 code changes
-- base sync frontmatter extraction bug (errors on SUMMARY.md files) — pre-existing
 - base install can't copy over itself when running binary IS target — pre-existing
 - signal/mod.rs has 43 entities — complexity hotspot
+- hook-events.jsonl grows unbounded — needs rotation/truncation
+- Debug eprintln! in WS handler — remove in polish pass
 
 ### Git State
-Last commit: 9330f67 (uncommitted: Plans 01+02 — milestone, slug resolution, test fixes, AST query, hook injection)
+Last commit: dbd259a (Plan 08-03 + README update)
 Branch: main
 
 ### Blockers/Concerns
@@ -73,10 +77,10 @@ Branch: main
 
 ## Session Continuity
 
-Last session: 2026-06-02 14:15
-Stopped at: Plan 08-03 created (WebSocket session activity + drag-drop kanban)
-Next action: Review and approve plan, then run /paul:apply .paul/phases/08-command-center-dashboard/08-03-PLAN.md
-Resume file: .paul/phases/08-command-center-dashboard/08-03-PLAN.md
+Last session: 2026-06-02 15:32
+Stopped at: Plan 08-03 complete (session activity + drag-drop kanban + sync fix + README)
+Next action: /paul:plan for Plan 08-04 (usage analytics + visual polish)
+Resume file: .paul/phases/08-command-center-dashboard/08-03-SUMMARY.md
 
 ---
 *STATE.md — Updated after every significant action*
