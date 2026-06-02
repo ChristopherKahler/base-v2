@@ -1,8 +1,12 @@
 # BASE
 
-A Rust binary that wires a knowledge graph into Claude Code's hook system. When Claude touches a file, the graph injects what that file contains, what it calls, what depends on it. When Claude greps for code, the graph intercepts and says "I already know where that is." When nothing is relevant, it stays silent.
+The intelligence layer Claude Code doesn't have.
 
-The product is the silence. Every other tool in this space dumps context at you. BASE only speaks when something actually matters to what you're doing right now.
+Your codebase, your projects, your people, your decisions, your business - mapped into one ontological graph and wired directly into Claude's hook pipeline. When Claude touches a file, it already knows what that file contains, what calls it, and what depends on it. When Claude greps for code, the graph intercepts and says "I already know where that is." When you ask about a project, it knows the milestones, the tasks, who's involved, and what decisions led to the current state.
+
+This isn't a CLAUDE.md file. It isn't a prompt you paste. It's a live knowledge graph that tracks everything across every workspace and injects exactly the right slice of context at exactly the right moment - then goes silent until something changes.
+
+Your code. Your projects. Your people. Your decisions. One graph. Every session. Every agent. Automatic.
 
 ```
 base p l                          # list your projects
@@ -12,7 +16,31 @@ base t a -p myapp -n "Fix login"  # add a task to a project
 
 You can run these yourself in a Claude Code session with `!` prefix, or Claude runs them automatically through hooks. Same binary, same graph, same data.
 
-## What this actually does
+## Why this exists
+
+Claude Code is the best coding agent on the planet. But it starts every session blind. It doesn't know your codebase structure. It doesn't know your active projects. It doesn't know the decision you made last week about auth patterns. It doesn't know your teammate is blocked on the API. It doesn't know what files depend on the module you're about to change.
+
+CLAUDE.md helps. But it's a static document you wrote once. It doesn't know what you're touching right now. It doesn't adapt. It doesn't suppress itself when irrelevant.
+
+BASE is the layer underneath - the one that turns Claude Code from a coding assistant into a business-aware operating system. It maps your entire operation into an ontological graph (code structure, projects, milestones, tasks, people, decisions, domain rules) and wires that graph into every hook in the pipeline. Session start, prompt submit, pre-tool-use, post-tool-use - at every stage, the graph surfaces what's relevant and suppresses what isn't.
+
+Every agent gets it. Main session, subagents, explore agents, workflow agents - they all inherit the same hooks, the same graph, the same intelligence. Your whole fleet sees the same map.
+
+You can run these yourself in a Claude Code session with `!` prefix, or Claude runs them automatically through hooks. Same binary, same graph, same data.
+
+## What the graph knows
+
+BASE maps three layers into one queryable graph:
+
+**Your code** - every function, struct, class, import, and call relationship across 35+ languages. Tree-sitter extracts the structure, SPARQL makes it queryable. "What calls this function?" is a graph query, not a grep.
+
+**Your business** - projects with milestones and tasks. People and their roles. Decisions and the rationale behind them. Goals and deadlines. Domain rules that fire when you're working in the right context. This is the stuff that lives in your head or in scattered docs - BASE puts it in the graph where every agent can reach it.
+
+**Your operations** - which domains are active, what rules apply where, which files are stale, what changed since last session. Signals that fire at session start to orient Claude before you type a word.
+
+All of it is relational. A project has milestones. A milestone has tasks. A task touches files. Those files contain functions. Those functions call other functions in other files that belong to other projects. One graph. Cross-cutting. Queryable.
+
+## What this looks like in practice
 
 You open a file. Before the content even loads, the pre-tool-use hook fires and injects:
 
