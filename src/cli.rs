@@ -27,41 +27,49 @@ pub enum Commands {
         event: String,
     },
     /// Query AST codebase graph (entities, calls, imports)
+    #[command(visible_alias = "a")]
     Ast {
         #[command(subcommand)]
         action: AstAction,
     },
     /// Manage projects
+    #[command(visible_alias = "p")]
     Project {
         #[command(subcommand)]
         action: ProjectAction,
     },
     /// Manage milestones (epics within a project)
+    #[command(visible_alias = "m")]
     Milestone {
         #[command(subcommand)]
         action: MilestoneAction,
     },
     /// Manage tasks
+    #[command(visible_alias = "t")]
     Task {
         #[command(subcommand)]
         action: TaskAction,
     },
     /// Log and search decisions
+    #[command(visible_alias = "d")]
     Decision {
         #[command(subcommand)]
         action: DecisionAction,
     },
     /// Manage entities (people, organizations)
+    #[command(visible_alias = "e")]
     Entity {
         #[command(subcommand)]
         action: EntityAction,
     },
     /// Manage goals
+    #[command(visible_alias = "g")]
     Goal {
         #[command(subcommand)]
         action: GoalAction,
     },
     /// Manage reminders
+    #[command(visible_alias = "r")]
     Reminder {
         #[command(subcommand)]
         action: ReminderAction,
@@ -150,18 +158,19 @@ pub enum OperatorAction {
 #[derive(Subcommand)]
 pub enum AstAction {
     /// Query AST graph for entities, calls, and imports
+    #[command(visible_alias = "q")]
     Query {
         /// Find entities by name (case-insensitive substring match)
-        #[arg(long)]
+        #[arg(short, long)]
         contains: Option<String>,
         /// List all entities in a source file with relationships
-        #[arg(long)]
+        #[arg(short, long)]
         file: Option<String>,
         /// Find all callers of a named entity
         #[arg(long)]
         calls: Option<String>,
         /// Find all files that import from a given file
-        #[arg(long)]
+        #[arg(short, long)]
         imports: Option<String>,
     },
 }
@@ -169,25 +178,28 @@ pub enum AstAction {
 #[derive(Subcommand)]
 pub enum ProjectAction {
     /// Add a new project
+    #[command(visible_alias = "a")]
     Add {
-        #[arg(long)]
+        #[arg(short, long)]
         name: String,
-        #[arg(long, default_value = "active")]
+        #[arg(short, long, default_value = "active")]
         status: String,
         /// Project path (REQUIRED — auto-creates domain trigger for file matching)
-        #[arg(long)]
+        #[arg(short, long)]
         path: String,
     },
     /// List all projects
+    #[command(visible_alias = "l")]
     List,
     /// Show a specific project (accepts slug or display name)
     Get { slug: String },
     /// Update a project (accepts slug or display name)
+    #[command(visible_alias = "u")]
     Update {
         slug: String,
-        #[arg(long)]
+        #[arg(short, long)]
         status: Option<String>,
-        #[arg(long)]
+        #[arg(short, long)]
         blocked_by: Option<String>,
         #[arg(long)]
         next_action: Option<String>,
@@ -197,29 +209,32 @@ pub enum ProjectAction {
 #[derive(Subcommand)]
 pub enum MilestoneAction {
     /// Add a milestone to a project
+    #[command(visible_alias = "a")]
     Add {
         /// Project slug or display name
-        #[arg(long)]
+        #[arg(short, long)]
         project: String,
-        #[arg(long)]
+        #[arg(short, long)]
         name: String,
-        #[arg(long)]
+        #[arg(short, long)]
         description: Option<String>,
     },
     /// List milestones (optionally filtered by project)
+    #[command(visible_alias = "l")]
     List {
         /// Project slug or display name
-        #[arg(long)]
+        #[arg(short, long)]
         project: Option<String>,
     },
     /// Show a specific milestone
     Get { slug: String },
     /// Update a milestone
+    #[command(visible_alias = "u")]
     Update {
         slug: String,
-        #[arg(long)]
+        #[arg(short, long)]
         status: Option<String>,
-        #[arg(long)]
+        #[arg(short, long)]
         description: Option<String>,
     },
 }
@@ -227,25 +242,27 @@ pub enum MilestoneAction {
 #[derive(Subcommand)]
 pub enum TaskAction {
     /// Add a task to a project (optionally under a milestone)
+    #[command(visible_alias = "a")]
     Add {
         /// Project slug or display name
-        #[arg(long)]
+        #[arg(short, long)]
         project: String,
-        #[arg(long)]
+        #[arg(short, long)]
         name: String,
         #[arg(long)]
         priority: Option<String>,
         /// Milestone slug to group this task under
-        #[arg(long)]
+        #[arg(short, long)]
         milestone: Option<String>,
     },
     /// List tasks (filter by project or milestone)
+    #[command(visible_alias = "l")]
     List {
         /// Project slug or display name
-        #[arg(long)]
+        #[arg(short, long)]
         project: Option<String>,
         /// Milestone slug to filter by
-        #[arg(long)]
+        #[arg(short, long)]
         milestone: Option<String>,
     },
     /// Mark a task as completed
