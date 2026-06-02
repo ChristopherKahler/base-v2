@@ -788,8 +788,6 @@ async fn handle_ws_session(mut socket: WebSocket, state: Arc<AppState>) {
         None => return,
     };
 
-    eprintln!("[ws] session connected, tailing: {}", log_path.display());
-
     // Read current file and backfill last 100 lines
     let mut last_line_count = 0;
     if let Ok(content) = std::fs::read_to_string(&log_path) {
@@ -801,17 +799,13 @@ async fn handle_ws_session(mut socket: WebSocket, state: Arc<AppState>) {
                 return;
             }
         }
-        eprintln!("[ws] backfill sent {} events (of {} total)", lines.len().min(100), lines.len());
     }
 
     // Tail loop: check file for new lines every 500ms
     loop {
         match tokio::time::timeout(Duration::from_millis(500), socket.recv()).await {
             Ok(Some(Ok(_))) => continue,
-            Ok(Some(Err(_))) | Ok(None) => {
-                eprintln!("[ws] session disconnected");
-                return;
-            }
+            Ok(Some(Err(_))) | Ok(None) => return,
             Err(_) => {} // Timeout — check the file
         }
 
@@ -823,9 +817,225 @@ async fn handle_ws_session(mut socket: WebSocket, state: Arc<AppState>) {
                         return;
                     }
                 }
-                eprintln!("[ws] pushed {} new events", lines.len() - last_line_count);
                 last_line_count = lines.len();
             }
         }
     }
+}
+
+// ─── Usage Analytics ────────────────────────────────────────
+
+#[derive(Serialize, Clone)]
+pub struct UsageSummary {
+    pub total_input: u64,
+    pub total_output: u64,
+    pub total_cache_read: u64,
+    pub total_cache_write: u64,
+    pub estimated_cost_usd: f64,
+    pub session_count: usize,
+    pub models: std::collections::HashMap<String, ModelUsage>,
+    pub daily: Vec<DailyUsage>,
+}
+
+#[derive(Serialize, Clone, Default)]
+pub struct ModelUsage {
+    pub input: u64,
+    pub output: u64,
+    pub cache_read: u64,
+    pub cache_write: u64,
+    pub cost: f64,
+    pub count: usize,
+}
+
+#[derive(Serialize, Clone)]
+pub struct DailyUsage {
+    pub date: String,
+    pub input: u64,
+    pub output: u64,
+    pub cost: f64,
+}
+
+#[derive(Serialize, Clone)]
+pub struct SessionUsageEntry {
+    pub session_id: String,
+    pub project: String,
+    pub model: String,
+    pub input: u64,
+    pub output: u64,
+    pub cache_read: u64,
+    pub cost: f64,
+    pub started: String,
+    pub messages: usize,
+}
+
+fn estimate_cost(model: &str, input: u64, output: u64, cache_read: u64, cache_write: u64) -> f64 {
+    let (inp_rate, out_rate, cr_rate, cw_rate) = if model.contains("opus") {
+        (15.0, 75.0, 1.5, 18.75)
+    } else if model.contains("haiku") {
+        (0.80, 4.0, 0.08, 1.0)
+    } else {
+        // sonnet or unknown
+        (3.0, 15.0, 0.30, 3.75)
+    };
+    (input as f64 * inp_rate + output as f64 * out_rate
+        + cache_read as f64 * cr_rate + cache_write as f64 * cw_rate)
+        / 1_000_000.0
+}
+
+fn parse_usage_data() -> (UsageSummary, Vec<SessionUsageEntry>) {
+    use std::collections::HashMap;
+
+    let claude_dir = dirs::home_dir()
+        .map(|h| h.join(".claude").join("projects"))
+        .unwrap_or_default();
+
+    let cutoff = chrono::Local::now() - chrono::Duration::days(30);
+    let cutoff_str = cutoff.format("%Y-%m-%d").to_string();
+
+    let mut total_input = 0u64;
+    let mut total_output = 0u64;
+    let mut total_cache_read = 0u64;
+    let mut total_cache_write = 0u64;
+    let mut total_cost = 0.0f64;
+    let mut models: HashMap<String, ModelUsage> = HashMap::new();
+    let mut daily_map: HashMap<String, (u64, u64, f64)> = HashMap::new();
+    let mut sessions: Vec<SessionUsageEntry> = Vec::new();
+
+    let Ok(projects) = std::fs::read_dir(&claude_dir) else {
+        return (UsageSummary {
+            total_input: 0, total_output: 0, total_cache_read: 0, total_cache_write: 0,
+            estimated_cost_usd: 0.0, session_count: 0, models: HashMap::new(), daily: Vec::new(),
+        }, Vec::new());
+    };
+
+    for project_dir in projects.flatten() {
+        if !project_dir.path().is_dir() { continue; }
+
+        let project_name = project_dir.file_name().to_string_lossy()
+            .split('-').last().unwrap_or("unknown").to_string();
+
+        let Ok(files) = std::fs::read_dir(project_dir.path()) else { continue };
+
+        for file in files.flatten() {
+            let path = file.path();
+            if path.extension().is_none_or(|e| e != "jsonl") { continue; }
+
+            // Skip old files by mtime
+            if let Ok(meta) = std::fs::metadata(&path) {
+                if let Ok(modified) = meta.modified() {
+                    let age = modified.elapsed().unwrap_or_default();
+                    if age > std::time::Duration::from_secs(30 * 24 * 3600) { continue; }
+                }
+            }
+
+            let session_id = path.file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_default();
+
+            let Ok(content) = std::fs::read_to_string(&path) else { continue };
+
+            let mut sess_input = 0u64;
+            let mut sess_output = 0u64;
+            let mut sess_cache_read = 0u64;
+            let mut sess_cache_write = 0u64;
+            let mut sess_model = String::new();
+            let mut sess_started = String::new();
+            let mut sess_msgs = 0usize;
+
+            for line in content.lines() {
+                let Ok(val) = serde_json::from_str::<serde_json::Value>(line) else { continue };
+
+                let Some(msg) = val.get("message") else { continue };
+                let Some(usage) = msg.get("usage") else { continue };
+
+                let model = msg.get("model").and_then(|m| m.as_str()).unwrap_or("unknown");
+                let inp = usage.get("input_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
+                let out = usage.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
+                let cr = usage.get("cache_read_input_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
+                let cw = usage.get("cache_creation_input_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
+
+                let cost = estimate_cost(model, inp, out, cr, cw);
+
+                total_input += inp;
+                total_output += out;
+                total_cache_read += cr;
+                total_cache_write += cw;
+                total_cost += cost;
+
+                sess_input += inp;
+                sess_output += out;
+                sess_cache_read += cr;
+                sess_cache_write += cw;
+                sess_msgs += 1;
+                if sess_model.is_empty() { sess_model = model.to_string(); }
+
+                // Extract timestamp for daily aggregation
+                if let Some(ts) = val.get("timestamp").and_then(|t| t.as_str()) {
+                    let date = &ts[..10.min(ts.len())];
+                    if date >= cutoff_str.as_str() {
+                        let entry = daily_map.entry(date.to_string()).or_insert((0, 0, 0.0));
+                        entry.0 += inp;
+                        entry.1 += out;
+                        entry.2 += cost;
+                    }
+                    if sess_started.is_empty() { sess_started = ts.to_string(); }
+                }
+
+                let m = models.entry(model.to_string()).or_default();
+                m.input += inp;
+                m.output += out;
+                m.cache_read += cr;
+                m.cache_write += cw;
+                m.cost += cost;
+                m.count += 1;
+            }
+
+            if sess_msgs > 0 {
+                sessions.push(SessionUsageEntry {
+                    session_id,
+                    project: project_name.clone(),
+                    model: sess_model,
+                    input: sess_input,
+                    output: sess_output,
+                    cache_read: sess_cache_read,
+                    cost: estimate_cost("", sess_input, sess_output, sess_cache_read, sess_cache_write),
+                    started: sess_started,
+                    messages: sess_msgs,
+                });
+            }
+        }
+    }
+
+    // Sort daily by date
+    let mut daily: Vec<DailyUsage> = daily_map.into_iter()
+        .map(|(date, (input, output, cost))| DailyUsage { date, input, output, cost })
+        .collect();
+    daily.sort_by(|a, b| a.date.cmp(&b.date));
+
+    // Sort sessions newest-first
+    sessions.sort_by(|a, b| b.started.cmp(&a.started));
+    sessions.truncate(50);
+
+    let summary = UsageSummary {
+        total_input,
+        total_output,
+        total_cache_read,
+        total_cache_write,
+        estimated_cost_usd: (total_cost * 100.0).round() / 100.0,
+        session_count: sessions.len(),
+        models,
+        daily,
+    };
+
+    (summary, sessions)
+}
+
+pub async fn usage_summary() -> Json<UsageSummary> {
+    let (summary, _) = parse_usage_data();
+    Json(summary)
+}
+
+pub async fn usage_sessions() -> Json<Vec<SessionUsageEntry>> {
+    let (_, sessions) = parse_usage_data();
+    Json(sessions)
 }

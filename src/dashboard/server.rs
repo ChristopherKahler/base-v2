@@ -61,6 +61,9 @@ pub async fn start(port: u16, cwd: PathBuf) {
         .route("/api/ops/reminders", get(super::api::ops_reminders))
         // Task status
         .route("/api/ops/task/{iri}/status", patch(super::api::update_task_status))
+        // Usage Analytics
+        .route("/api/usage/summary", get(super::api::usage_summary))
+        .route("/api/usage/sessions", get(super::api::usage_sessions))
         // WebSocket
         .route("/api/ws/session", get(super::api::ws_session))
         .fallback(get(serve_static))

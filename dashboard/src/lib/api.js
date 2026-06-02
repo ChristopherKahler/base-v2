@@ -82,3 +82,13 @@ export async function updateTaskStatus(iri, status) {
     return r.ok ? await r.json() : null;
   } catch { return null; }
 }
+
+export async function getUsageSummary() {
+  try { const r = await fetch(`${BASE}/api/usage/summary`); return r.ok ? await r.json() : null; }
+  catch { return null; }
+}
+
+export async function getUsageSessions() {
+  try { const r = await fetch(`${BASE}/api/usage/sessions`); return r.ok ? await r.json() : []; }
+  catch { return []; }
+}
