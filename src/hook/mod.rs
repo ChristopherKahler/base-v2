@@ -22,6 +22,8 @@ pub struct HookEventData {
     pub tool_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub file_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
 }
 
 /// Extract tool name and file path from hook event JSON.
@@ -67,22 +69,31 @@ fn run(event: &str) -> anyhow::Result<HookEventData> {
 
     let config = BaseConfig::load(&cwd);
 
+    let session_id = stdin_json
+        .get("sessionId")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+
     match event {
         "session-start" => {
             session_start::handle(&config, &cwd)?;
-            Ok(HookEventData::default())
+            Ok(HookEventData { session_id, ..Default::default() })
         }
         "pre-tool-use" => {
             pre_tool_use::handle(&config, &cwd, &stdin_json)?;
             let (tool_name, file_path) = extract_tool_context(&stdin_json);
-            Ok(HookEventData { tool_name, file_path, ..Default::default() })
+            Ok(HookEventData { tool_name, file_path, session_id, ..Default::default() })
         }
         "post-tool-use" => {
             post_tool_use::handle(&config, &cwd, &stdin_json)?;
             let (tool_name, file_path) = extract_tool_context(&stdin_json);
-            Ok(HookEventData { tool_name, file_path, ..Default::default() })
+            Ok(HookEventData { tool_name, file_path, session_id, ..Default::default() })
         }
-        "user-prompt-submit" => user_prompt_submit::handle(&config, &cwd, &stdin_json),
+        "user-prompt-submit" => {
+            let mut data = user_prompt_submit::handle(&config, &cwd, &stdin_json)?;
+            data.session_id = session_id;
+            Ok(data)
+        }
         _ => Ok(HookEventData::default()),
     }
 }
@@ -110,6 +121,7 @@ fn log_hook_event(hook: &str, success: bool, data: Option<&HookEventData>) {
         "prompt_text": data.and_then(|d| d.prompt_text.as_deref()),
         "tool_name": data.and_then(|d| d.tool_name.as_deref()),
         "file_path": data.and_then(|d| d.file_path.as_deref()),
+        "session_id": data.and_then(|d| d.session_id.as_deref()),
     });
 
     use std::io::Write;

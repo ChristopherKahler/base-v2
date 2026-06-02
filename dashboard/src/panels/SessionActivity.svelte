@@ -28,6 +28,7 @@
       if (ev.hook === 'session-start') {
         current = {
           startTs: ev.ts,
+          sessionId: ev.session_id || null,
           prompts: 0,
           toolCalls: 0,
           domains: new Set(),
@@ -40,9 +41,9 @@
         groups.push(current);
       }
       if (!current) {
-        // Events before any session-start — create an "unknown" session
         current = {
           startTs: ev.ts,
+          sessionId: ev.session_id || null,
           prompts: 0,
           toolCalls: 0,
           domains: new Set(),
@@ -53,6 +54,10 @@
           maxPromptNum: 0,
         };
         groups.push(current);
+      }
+      // Capture session_id from any event if not set yet
+      if (!current.sessionId && ev.session_id) {
+        current.sessionId = ev.session_id;
       }
 
       current.events.push(ev);
@@ -73,14 +78,25 @@
       }
     }
 
-    // Convert Sets to arrays and compute durations, reverse so newest is first
-    return groups.reverse().map((s, i) => ({
-      ...s,
-      id: i,
-      domains: [...s.domains],
-      isLive: i === 0,
-      lastTs: s.events[s.events.length - 1]?.ts || s.startTs,
-    }));
+    // Convert Sets to arrays, compute durations and brackets, reverse so newest is first
+    return groups.reverse().map((s, i) => {
+      const n = s.maxPromptNum;
+      let bracket = null;
+      if (n > 0) {
+        if (n <= 3) bracket = { label: 'FRESH', color: 'var(--green)' };
+        else if (n <= 10) bracket = { label: 'MODERATE', color: 'var(--primary)' };
+        else if (n <= 20) bracket = { label: 'DEPLETED', color: 'var(--orange)' };
+        else bracket = { label: 'CRITICAL', color: 'var(--red)' };
+      }
+      return {
+        ...s,
+        id: i,
+        domains: [...s.domains],
+        isLive: i === 0,
+        lastTs: s.events[s.events.length - 1]?.ts || s.startTs,
+        bracket,
+      };
+    });
   }
 
   function connect() {
@@ -166,18 +182,6 @@
     return p.replace(/^\/home\/[^/]+\//, '~/');
   }
 
-  // Derive context bracket from latest prompt_num in live session
-  $: liveBracket = (() => {
-    const live = sessions.find(s => s.isLive);
-    if (!live) return null;
-    const n = live.maxPromptNum;
-    if (n <= 0) return null;
-    if (n <= 3) return { label: 'FRESH', color: 'var(--green)' };
-    if (n <= 10) return { label: 'MODERATE', color: 'var(--primary)' };
-    if (n <= 20) return { label: 'DEPLETED', color: 'var(--orange)' };
-    return { label: 'CRITICAL', color: 'var(--red)' };
-  })();
-
   onMount(() => { connect(); });
   onDestroy(() => {
     if (ws) ws.close();
@@ -193,12 +197,7 @@
       {#if connected}Live{:else if reconnecting}Reconnecting{:else}Offline{/if}
     </div>
   </div>
-  <div class="header-right">
-    {#if liveBracket}
-      <span class="bracket-badge" style="color: {liveBracket.color}; border-color: {liveBracket.color}" title="Context bracket: FRESH (1-3), MODERATE (4-10), DEPLETED (11-20), CRITICAL (21+) — deeper sessions get heavier re-injection">{liveBracket.label}</span>
-    {/if}
-    <span class="session-count">{sessions.length} session{sessions.length !== 1 ? 's' : ''}</span>
-  </div>
+  <span class="session-count">{sessions.length} session{sessions.length !== 1 ? 's' : ''}</span>
 </div>
 
 <div class="main-content">
@@ -217,8 +216,14 @@
                 <span class="live-badge">● LIVE</span>
               {/if}
               <span class="session-time">{relTime(session.startTs)}</span>
+              {#if session.sessionId}
+                <span class="session-id" title={session.sessionId}>{session.sessionId.slice(0, 8)}</span>
+              {/if}
               {#if session.events.length > 1}
                 <span class="session-duration">{duration(session.startTs, session.lastTs)}</span>
+              {/if}
+              {#if session.bracket}
+                <span class="bracket-badge" style="color: {session.bracket.color}; border-color: {session.bracket.color}" title="Context bracket: prompt depth {session.maxPromptNum}">{session.bracket.label}</span>
               {/if}
               {#if session.errors > 0}
                 <span class="error-count">{session.errors} error{session.errors > 1 ? 's' : ''}</span>
@@ -425,6 +430,15 @@
     font-size: 12px;
     color: var(--ink-secondary);
     font-weight: 500;
+  }
+  .session-id {
+    font-size: 10px;
+    color: var(--ink-tertiary);
+    font-family: monospace;
+    background: var(--surface-03);
+    padding: 1px 5px;
+    border-radius: 3px;
+    cursor: help;
   }
   .session-duration {
     font-size: 11px;
