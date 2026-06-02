@@ -7,8 +7,8 @@ Build the BASE v2 proactive context engine from the Rust scaffold up: define the
 ## Current Milestone
 
 **v0.1 Proactive Context Engine** (v0.1.0)
-Status: In progress
-Phases: 6 of 9 complete (Phase 7 in progress)
+Status: Complete ✓
+Phases: 9 of 9 complete
 
 ## Phases
 
@@ -22,7 +22,7 @@ Phases: 6 of 9 complete (Phase 7 in progress)
 | 5 | Signal Layer (proof) | 01 | Complete ✓ | 2026-06-01 |
 | 6 | CARL Absorption | 03+ | Complete ✓ | 2026-06-01 |
 | 7 | v1 Migration + Cutover | 02 | Complete ✓ | 2026-06-02 |
-| 8 | Command Center Dashboard | 01+ | Planning | - |
+| 8 | Command Center Dashboard | 05 | Complete ✓ | 2026-06-02 |
 
 ## Phase Details
 
