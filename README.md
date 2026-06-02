@@ -406,6 +406,26 @@ BASE tracks how deep you are in a session:
 
 Thresholds are configurable in `base.toml`. The idea: early in a session you don't need heavy injection (Claude has fresh context). Later, context has been compacted or summarized, so the system re-injects what matters.
 
+## Command Center Dashboard
+
+```bash
+base dashboard
+```
+
+One command. Browser opens. Your entire operation - visualized.
+
+**Graph Explorer** - your knowledge graph rendered as a live, interactive force-directed network. Nodes color-coded by type (code in blue, projects in green, people in orange, decisions in yellow). Click any node to see its properties, relationships, incoming and outgoing edges. Search across entities. Filter by type. Add operator notes that persist in the graph. This isn't a static diagram you exported from a tool - it's your actual running graph, queryable and navigable.
+
+**Operations** - your projects, milestones, and tasks as a kanban board or sortable table. Four columns: active, blocked, completed, pending. Drag a card between columns and the status updates in the graph instantly. Filter by project. See recent decisions with rationale. Check overdue reminders. The operations panel you'd build in Notion or Linear - except the data is your graph, not a separate SaaS database you have to keep in sync.
+
+**Session Activity** - live WebSocket feed of every hook event across all your Claude Code sessions. Events grouped by session boundaries: how many prompts, how many tool calls, which domains matched, how many rules injected, how many deduped. The current session gets a live badge. Errors surface immediately. Click to expand individual events. This is the window into what BASE is actually doing - which hooks fire, what context flows, what gets suppressed.
+
+**Usage Analytics** - token usage, cost tracking, model distribution across sessions. *(Coming in Plan 04.)*
+
+The dashboard is compiled into the binary. No npm install, no separate server, no configuration. `base dashboard` starts an embedded HTTP server on localhost, opens your browser, and serves the SPA from memory. The graph loads from your workspace's `graph.trig`. WebSocket tails your hook event log in real-time. Everything runs local, everything is your data.
+
+Every panel reads from the same SPARQL-backed API. The same graph that powers your hooks powers your dashboard. Add a note in the Graph Explorer and it shows up in your next Claude session. Drag a task to "completed" in the kanban and `base task list` reflects it. One graph, multiple surfaces.
+
 ## Design principles
 
 **Suppression over detection.** Detection is trivial. The product is the gate that stays silent until something changes. If you touch the same file twice, the AST map doesn't re-inject. If the same domain rules are already in context, they don't repeat. The value is in what BASE doesn't say.
@@ -422,7 +442,7 @@ Thresholds are configurable in `base.toml`. The idea: early in a session you don
 
 | Layer | Tech |
 |-------|------|
-| Language | Rust (single binary, ~16MB) |
+| Language | Rust (single binary, ~20MB — includes embedded dashboard SPA) |
 | Graph | Oxigraph (embedded, in-memory, loaded from disk per invocation) |
 | Query | SPARQL SELECT and UPDATE |
 | Persistence | TriG text files (git-native, atomic write-back via temp+rename) |
