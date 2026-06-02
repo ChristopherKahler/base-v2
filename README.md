@@ -36,6 +36,8 @@ BASE maps three layers into one queryable graph:
 
 **Your business** - projects with milestones and tasks. People and their roles. Decisions and the rationale behind them. Goals and deadlines. Domain rules that fire when you're working in the right context. This is the stuff that lives in your head or in scattered docs - BASE puts it in the graph where every agent can reach it.
 
+**Your documentation** - every markdown file with frontmatter becomes a connected node in the same graph. Not just metadata in a YAML block - the body is parsed too. Headings become navigable sections. `[links](path/to/file.md)` become document-to-document edges. `[[wikilinks]]` become entity references. `@path/to/file` mentions become file edges. Tags become individual queryable nodes, not a comma-separated blob. When Claude writes or edits a markdown file, the pre-tool-use hook injects the extraction contract so Claude authors graph-aware markdown by default - it knows what patterns the graph will pick up downstream.
+
 **Your operations** - which domains are active, what rules apply where, which files are stale, what changed since last session. Signals that fire at session start to orient Claude before you type a word.
 
 All of it is relational. A project has milestones. A milestone has tasks. A task touches files. Those files contain functions. Those functions call other functions in other files that belong to other projects. One graph. Cross-cutting. Queryable.
@@ -75,6 +77,30 @@ The graph knows file locations, line numbers, and call relationships.
 
 One SPARQL query instead of Claude scanning 15 files looking for a match. The graph already mapped the entire codebase - Claude just needs to ask it.
 
+You ask Claude to create a design doc. Claude reaches for Write on `docs/auth-redesign.md`. Before it writes a single byte, the pre-tool-use hook fires:
+
+```
+<mop-markdown>
+This markdown file feeds a knowledge graph. Structure it for extraction:
+
+FRONTMATTER (between --- delimiters):
+  type: doc|decision|note|spec|plan|summary
+  status: draft|active|complete|archived
+  tags: [specific, searchable, terms]
+  relatedTo: [entity-slug-1, entity-slug-2]
+
+BODY PATTERNS (extracted as graph edges — use intentionally):
+  ## Headings        → hasSection edges (document structure + search)
+  [text](path.md)    → references edges to other documents
+  [[entity-name]]    → references edges to named entities
+  @path/to/file      → references edges to documents
+  Tags become individual graph edges — be specific, not generic
+  relatedTo links to real entity slugs — check existing entities
+</mop-markdown>
+```
+
+Claude didn't read a style guide. It didn't memorize a convention. The hook taught it the extraction contract at the exact moment it was about to write. So the doc it creates has proper frontmatter with typed tags, `relatedTo` edges pointing to real entities, `[[wikilinks]]` to connect concepts, and `@src/auth.rs` references to the code it's documenting. Next sync, that document becomes a fully connected graph node - linked to its tags, its related entities, the code it references, and the other docs it mentions. Every agent that touches that file later inherits those connections.
+
 ## How this compares
 
 **LSP** tells you where a symbol is defined. You point at a symbol, it answers. One language at a time. No project context, no business context, no session memory, no idea what Claude already looked at this session.
@@ -96,6 +122,8 @@ Querying is keyword matching against node labels (TF-IDF weighted string matchin
 | Subagent support | None | Manual per-agent | Automatic - every agent inherits hooks |
 | Graph model | Language server index | NetworkX JSON (nodes + edges) | RDF triples with typed ontological relationships |
 | Business context | None | None | Projects, milestones, tasks, people, decisions, domain rules |
+| Doc extraction | None | None | Frontmatter + body (headings, links, wikilinks, @-mentions, tags, relatedTo) |
+| Authoring guidance | None | None | Hook injects extraction contract on Write/Edit so agents author graph-aware docs by default |
 | Query cost | Free (local) | Free for code-only; LLM tokens for semantic pass | Free (SPARQL, no LLM) |
 
 BASE uses the same tree-sitter extraction pipeline as Graphify for the AST pass (we forked their extractor). What happens after extraction is completely different. Graphify stores nodes and edges in a flat JSON file and queries via string matching. BASE loads typed triples into an RDF ontological graph where relationships have meaning (calls, importsFrom, contains, hasMethod, belongsTo, hasMilestone) and queries via SPARQL - the same query language that powers Wikidata and every serious knowledge graph. And the graph isn't just code. It's your entire operation - projects, people, decisions, rules - all relational, all cross-cutting, all queryable the same way.
@@ -259,11 +287,13 @@ Subcommands: `add` = `a`, `list` = `l`, `update` = `u`, `query` = `q`
 ### Sync and AST extraction
 
 ```bash
-base sync                        # extract markdown frontmatter + paul.toml into graph
+base sync                        # extract markdown metadata + body structure into graph
 base sync --incremental          # only changed files
 base sync --ast                  # extract code structure (tree-sitter, 35+ languages)
 base sync --ast --target src     # target a specific directory
 ```
+
+Markdown sync extracts frontmatter fields (type, status, tags, relatedTo) AND body structure (headings, markdown links, wikilinks, @-mentions). Every markdown file becomes a connected graph node with real edges to other documents and entities - not just an isolated blob with a title.
 
 ## Hierarchy: projects, milestones, tasks
 
@@ -298,7 +328,7 @@ Four hooks, all wired automatically by `base install`:
 |------|-----------|--------------|
 | SessionStart | New session opens | Syncs domains, ingests projects, runs signals |
 | UserPromptSubmit | You type a prompt | Matches keywords against domains, injects rules from graph |
-| PreToolUse | Claude is about to read/edit a file | Injects AST file map for source files. Intercepts grep with graph hint. Injects domain rules for matched paths. |
+| PreToolUse | Claude is about to read/edit a file | Injects AST file map for source files. Intercepts grep with graph hint. Injects domain rules for matched paths. Injects markdown extraction contract on Write/Edit of .md files so Claude authors graph-aware documents by default. |
 | PostToolUse | Claude finishes reading | Updates timestamps. Injects section-specific AST context for partial reads. |
 
 All hooks fail open. If anything errors, it logs to stderr and exits with empty stdout. Claude is never blocked by a hook failure.

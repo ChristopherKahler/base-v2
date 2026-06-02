@@ -85,6 +85,9 @@ pub enum Commands {
         /// Target directory for AST extraction (defaults to cwd)
         #[arg(long)]
         target: Option<String>,
+        /// Repair missing edges (backfill decision→domain, milestone→project, task→project links)
+        #[arg(long)]
+        repair: bool,
     },
     /// Manage domain matching rules
     Domain {
@@ -137,6 +140,13 @@ pub enum Commands {
         /// Also remove ~/.base-gbl/ global tier (destructive)
         #[arg(long)]
         purge: bool,
+    },
+    /// Launch the Command Center Dashboard (local web UI)
+    #[command(visible_alias = "dash")]
+    Dashboard {
+        /// Port to serve on (default: 3741)
+        #[arg(short, long, default_value = "3741")]
+        port: u16,
     },
     /// Scaffold a new workspace: create .base/, write configs, register globally
     Scaffold {
@@ -622,30 +632,38 @@ pub fn run() {
         },
 
         // ─── Sync ────────────────────────────────────────
-        Some(Commands::Sync { incremental, ast, target }) => {
+        Some(Commands::Sync { incremental, ast, target, repair }) => {
+            if repair {
+                match base::crud::repair_edges(&cwd, &config.namespace) {
+                    Ok(count) => println!("Repair complete: {count} edges backfilled"),
+                    Err(e) => eprintln!("Repair failed: {e}"),
+                }
+                return;
+            }
             if ast {
                 // AST extraction via bundled Python scripts
                 let target_dir = target.as_deref().unwrap_or(".");
-                let binary_path = std::env::current_exe().unwrap_or_default();
-                let scripts_dir = binary_path
-                    .parent()
-                    .and_then(|p| p.parent())
-                    .map(|p| p.join("scripts").join("ast"))
-                    .unwrap_or_else(|| std::path::PathBuf::from("scripts/ast"));
+                let home = dirs::home_dir().unwrap_or_default();
 
-                // Also check relative to cwd for dev builds
-                let ast_script = if scripts_dir.join("onto_ast.py").exists() {
-                    scripts_dir.join("onto_ast.py")
-                } else {
-                    // Fallback: look relative to the base-v2 source
-                    cwd.join("scripts/ast/onto_ast.py")
-                };
+                // Search order: ~/.base-gbl/scripts/ast/ → cwd/scripts/ast/ → source relative
+                let search_paths = [
+                    home.join(".base-gbl").join("scripts").join("ast").join("onto_ast.py"),
+                    cwd.join("scripts/ast/onto_ast.py"),
+                ];
 
-                if !ast_script.exists() {
-                    eprintln!("AST extractor not found at {}", ast_script.display());
-                    eprintln!("Expected: scripts/ast/onto_ast.py bundled with base");
+                let ast_script = search_paths
+                    .iter()
+                    .find(|p| p.exists())
+                    .cloned();
+
+                let Some(ast_script) = ast_script else {
+                    eprintln!("AST extractor not found. Searched:");
+                    for p in &search_paths {
+                        eprintln!("  {}", p.display());
+                    }
+                    eprintln!("\nRun `base install` to copy scripts to ~/.base-gbl/scripts/");
                     return;
-                }
+                };
 
                 let base_dir = base::config::find_workspace_base(&cwd)
                     .unwrap_or_else(|| cwd.join(".base"));
@@ -789,6 +807,12 @@ pub fn run() {
             if let Err(e) = base::install::uninstall(purge) {
                 eprintln!("Uninstall failed: {e}");
             }
+        }
+
+        // ─── Dashboard ────────────────────────────────────────
+        Some(Commands::Dashboard { port }) => {
+            let rt = tokio::runtime::Runtime::new().expect("Failed to start async runtime");
+            rt.block_on(base::dashboard::server::start(port, cwd));
         }
 
         // ─── Scaffold ─────────────────────────────────────────

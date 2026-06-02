@@ -231,6 +231,113 @@ pub fn term_display(term: oxigraph::model::TermRef<'_>) -> String {
     }
 }
 
+/// Backfill missing relationship edges for existing entities.
+/// Parses entity slugs to infer parent relationships and creates edges where missing.
+pub fn repair_edges(cwd: &Path, ns: &NamespaceConfig) -> Result<usize> {
+    let (store, trig_path) = load_workspace_store(cwd)?;
+    let ws_slug = workspace_slug(cwd);
+    let graph = workspace_graph_iri(ns, &ws_slug);
+    let p = &ns.prefix;
+    let pfx = prefixes(ns);
+    let mut count = 0;
+
+    // 1. Decisions → domain edges (slug format: {domain}.{decision})
+    count += repair_entity_edges(
+        &store, &pfx, &graph, ns, p,
+        "Decision", "decision", "domain", "hasDecision",
+    )?;
+
+    // 2. Milestones → project edges (slug format: {project}.{milestone})
+    count += repair_entity_edges(
+        &store, &pfx, &graph, ns, p,
+        "Milestone", "milestone", "project", "hasMilestone",
+    )?;
+
+    // 3. Tasks → project edges (slug format: {project}.{task})
+    count += repair_entity_edges(
+        &store, &pfx, &graph, ns, p,
+        "Task", "task", "project", "hasTask",
+    )?;
+
+    crate::store::write_back(&store, &trig_path)?;
+    Ok(count)
+}
+
+fn repair_entity_edges(
+    store: &Store,
+    pfx: &str,
+    graph: &str,
+    ns: &NamespaceConfig,
+    p: &str,
+    type_name: &str,
+    _entity_type: &str,
+    parent_type: &str,
+    predicate: &str,
+) -> Result<usize> {
+    // Find all entities of this type (check both named graph and any graph)
+    let sparql = format!(
+        "{pfx}\nSELECT ?s WHERE {{ {{ GRAPH <{graph}> {{ ?s rdf:type {p}:{type_name} }} }} UNION {{ GRAPH ?g {{ ?s rdf:type {p}:{type_name} }} }} }}"
+    );
+
+    let mut edges_added = 0;
+
+    if let Ok(QueryResults::Solutions(solutions)) = store.query(&sparql) {
+        let iris: Vec<String> = solutions
+            .filter_map(|r| r.ok())
+            .filter_map(|row| row.get("s").map(|t| {
+                match t.into() {
+                    oxigraph::model::TermRef::NamedNode(n) => n.as_str().to_string(),
+                    other => term_display(other),
+                }
+            }))
+            .collect();
+
+        for iri in &iris {
+            // Extract slug from IRI (everything after the last /)
+            let slug = iri.rsplit('/').next().unwrap_or("");
+
+            // Parse parent slug from dot notation (first segment before the dot)
+            let parent_slug = match slug.split_once('.') {
+                Some((parent, _)) => parent,
+                None => continue, // No dot = can't determine parent
+            };
+
+            let parent_iri = build_iri(ns, parent_type, parent_slug);
+
+            // Check if edge already exists (any graph)
+            let check = format!(
+                "{pfx}\nASK WHERE {{ GRAPH ?g {{ <{parent_iri}> {p}:{predicate} <{iri}> }} }}"
+            );
+
+            if let Ok(QueryResults::Boolean(true)) = store.query(&check) {
+                continue; // Edge exists
+            }
+
+            // Check parent entity exists (any graph)
+            let parent_check = format!(
+                "{pfx}\nASK WHERE {{ GRAPH ?g {{ <{parent_iri}> a ?type }} }}"
+            );
+
+            if let Ok(QueryResults::Boolean(false)) | Err(_) = store.query(&parent_check) {
+                continue; // Parent doesn't exist
+            }
+
+            // Create edge
+            let insert = format!(
+                "{pfx}\nINSERT DATA {{ GRAPH <{graph}> {{ <{parent_iri}> {p}:{predicate} <{iri}> }} }}"
+            );
+
+            if store.update(&insert).is_ok() {
+                edges_added += 1;
+                let short_slug = slug.split('.').last().unwrap_or(slug);
+                println!("  + {parent_slug} → {predicate} → {short_slug}");
+            }
+        }
+    }
+
+    Ok(edges_added)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

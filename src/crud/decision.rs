@@ -25,6 +25,9 @@ pub fn log(
         .map(|r| format!("      {p}:recall \"{r}\" ;\n"))
         .unwrap_or_default();
 
+    let domain_slug = crud::slugify(domain);
+    let domain_iri = crud::build_iri(ns, "domain", &domain_slug);
+
     let sparql = format!(
         "INSERT DATA {{\n\
            GRAPH <{graph}> {{\n\
@@ -35,6 +38,7 @@ pub fn log(
                {p}:status \"active\" ;\n\
                {p}:createdAt \"{now}\"^^xsd:dateTime ;\n\
                {p}:lastActive \"{now}\"^^xsd:dateTime .\n\
+             <{domain_iri}> {p}:hasDecision <{iri}> .\n\
            }}\n\
          }}"
     );

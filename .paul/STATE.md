@@ -5,18 +5,18 @@
 See: .paul/PROJECT.md (updated 2026-06-01)
 
 **Core value:** Proactive, deterministic context-injection engine — suppression, not detection. The gate that stays silent until the one thing that matters changes.
-**Current focus:** Phase 7 in progress. AST context injection shipped. Graph now powers code navigation via explicit queries + automatic hook injection.
+**Current focus:** Phase 8 in progress. Dashboard server + Graph Explorer shipped. Rich markdown extraction + MOP hook + edge repair live.
 
 ## Current Position
 
 Milestone: v0.1 Proactive Context Engine
-Phase: 7 of 8 (v1 Migration + Cutover) — In Progress
-Plan: 02 complete (AST Context Injection) + uninstall, aliases, audit fixes shipped post-plan
-Status: Phase 8 scoped. Ready for dashboard build.
-Last activity: 2026-06-02 10:26 — Phase 8 scoped, README overhauled, uninstall + aliases + extension coverage shipped
+Phase: 8 of 8 (Command Center Dashboard) — In Progress
+Plan: 08-02 complete (Operations + OperatorNotes). Ready for Plan 03.
+Status: Loop closed. Ready for next PLAN.
+Last activity: 2026-06-02 13:21 — Plan 08-02 shipped (operations panel + operator notes CRUD + graph refresh)
 
 Progress:
-- Milestone: [█████████░] 94%
+- Milestone: [█████████░] 98%
 - Phase 0: [██████████] 100% ✓
 - Phase 1: [██████████] 100% ✓
 - Phase 2: [██████████] 100% ✓
@@ -24,20 +24,21 @@ Progress:
 - Phase 4: [██████████] 100% ✓
 - Phase 5: [██████████] 100% ✓
 - Phase 6: [██████████] 100% ✓
-- Phase 7: [████░░░░░░] 40%
+- Phase 7: [██████████] 100% ✓
+- Phase 8: [██████░░░░] 66%
 
 ## Loop Position
 
 Current loop state:
 ```
 PLAN ──▶ APPLY ──▶ UNIFY
-  ✓        ✓        ✓     [Plan 02 complete — ready for Plan 03]
+  ✓        ✓        ✓     [Plan 08-02 complete — ready for Plan 03]
 ```
 
 ## Accumulated Context
 
 ### Decisions
-41 decisions (11 new this session):
+47 decisions (6 new this session):
 - (prior 30 decisions carried forward)
 - Milestone slugs use project.milestone dot notation matching task convention
 - resolve_slug skips IRI construction for inputs with spaces (invalid IRI)
@@ -50,6 +51,12 @@ PLAN ──▶ APPLY ──▶ UNIFY
 - Grep intercept is guidance only — does not block grep
 - AST file map deduped per file per session via SessionState.ast_injected
 - PostToolUse section context only fires on partial reads (offset+limit present)
+- Svelte over vanilla JS for dashboard — component model from day 1
+- Huly design system — dark canvas #090A0C, gradient depth over shadows
+- Decision CRUD creates hasDecision edge to domain — was silently orphaning
+- 0.0.0.0 bind for WSL2 — localhost forwarding unreliable
+- Custom left-edge resize on detail panel — CSS resize only goes bottom-right
+- OperatorNotes planned for Plan 02 — first dashboard write mutation
 
 ### Deferred Issues
 - AST data needs re-extraction to reflect Plans 01-02 code changes
@@ -66,11 +73,10 @@ Branch: main
 
 ## Session Continuity
 
-Last session: 2026-06-02 10:26
-Stopped at: Phase 7 Plans 01-02 shipped + audit fixes. Phase 8 dashboard scoped. README overhauled.
-Next action: Phase 8 Plan 01 — MVP Command Center Dashboard
-Resume file: .paul/HANDOFF-2026-06-02-phase7-dashboard-scope.md
-Resume file: .paul/phases/07-v1-migration-cutover/07-02-SUMMARY.md
+Last session: 2026-06-02 13:21
+Stopped at: Plan 08-02 complete (Operations panel + OperatorNotes CRUD + graph refresh)
+Next action: /paul:plan for Plan 08-03 (drag-and-drop status + WebSocket session + usage analytics)
+Resume file: .paul/HANDOFF-2026-06-02-phase8-plans01-02.md
 
 ---
 *STATE.md — Updated after every significant action*

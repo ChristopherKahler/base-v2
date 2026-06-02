@@ -21,8 +21,8 @@ Phases: 6 of 9 complete (Phase 7 in progress)
 | 4 | Extraction Layer | 01 | Complete ✓ | 2026-06-01 |
 | 5 | Signal Layer (proof) | 01 | Complete ✓ | 2026-06-01 |
 | 6 | CARL Absorption | 03+ | Complete ✓ | 2026-06-01 |
-| 7 | v1 Migration + Cutover | 01+ | In progress | - |
-| 8 | Dashboard (optional) | TBD | Not started | - |
+| 7 | v1 Migration + Cutover | 02 | Complete ✓ | 2026-06-02 |
+| 8 | Command Center Dashboard | 01+ | Planning | - |
 
 ## Phase Details
 

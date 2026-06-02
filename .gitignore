@@ -1,3 +1,6 @@
 /target
 __pycache__/
 .base-ast-cache/
+huly-DESIGN.md
+dashboard/node_modules/
+dashboard/dist/

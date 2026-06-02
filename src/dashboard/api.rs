@@ -1,0 +1,715 @@
+use std::sync::Arc;
+
+use axum::Json;
+use axum::extract::{Path, Query, State};
+use axum::http::StatusCode;
+use serde::{Deserialize, Serialize};
+
+use super::server::AppState;
+
+// ─── Data types ─────────────────────────────────────────────
+
+#[derive(Serialize)]
+pub struct GraphNode {
+    pub iri: String,
+    pub r#type: String,
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub document_type: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
+}
+
+#[derive(Serialize)]
+pub struct GraphEdge {
+    pub source: String,
+    pub target: String,
+    pub predicate: String,
+}
+
+#[derive(Serialize)]
+pub struct NodeDetail {
+    pub iri: String,
+    pub r#type: String,
+    pub name: String,
+    pub properties: serde_json::Value,
+    pub outgoing: Vec<GraphEdge>,
+    pub incoming: Vec<GraphEdge>,
+    pub notes: Vec<NoteEntry>,
+}
+
+#[derive(Serialize, Clone)]
+pub struct NoteEntry {
+    pub index: u32,
+    pub text: String,
+    pub created_at: String,
+}
+
+#[derive(Deserialize)]
+pub struct SearchQuery {
+    pub q: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct AddNoteBody {
+    pub text: String,
+}
+
+#[derive(Serialize)]
+pub struct OpsProject {
+    pub iri: String,
+    pub name: String,
+    pub status: String,
+    pub path: String,
+    pub milestones: Vec<OpsMilestone>,
+    pub tasks: Vec<OpsTask>,
+}
+
+#[derive(Serialize)]
+pub struct OpsMilestone {
+    pub iri: String,
+    pub name: String,
+    pub status: String,
+}
+
+#[derive(Serialize)]
+pub struct OpsTask {
+    pub iri: String,
+    pub name: String,
+    pub status: String,
+    pub priority: String,
+    pub project: String,
+    pub milestone: String,
+}
+
+#[derive(Serialize)]
+pub struct OpsDecision {
+    pub name: String,
+    pub rationale: String,
+    pub created_at: String,
+}
+
+#[derive(Serialize)]
+pub struct OpsReminder {
+    pub name: String,
+    pub due: String,
+    pub overdue: bool,
+}
+
+// ─── Graph API ──────────────────────────────────────────────
+
+pub async fn nodes(State(state): State<Arc<AppState>>) -> Json<Vec<GraphNode>> {
+    let ns = &state.config.namespace;
+    let p = &ns.prefix;
+    let pfx = crate::crud::prefixes(ns);
+    let store = state.store.lock().unwrap();
+
+    let sparql = format!(
+        "{pfx}\n\
+         SELECT ?s ?type ?name ?status ?path ?docType WHERE {{\n\
+           GRAPH ?g {{\n\
+             ?s rdf:type ?type .\n\
+             OPTIONAL {{ ?s {p}:name ?name }}\n\
+             OPTIONAL {{ ?s {p}:status ?status }}\n\
+             OPTIONAL {{ ?s {p}:path ?path }}\n\
+             OPTIONAL {{ ?s {p}:documentType ?docType }}\n\
+           }}\n\
+         }}"
+    );
+
+    let mut nodes = Vec::new();
+
+    if let Ok(oxigraph::sparql::QueryResults::Solutions(solutions)) = store.query(&sparql) {
+        for row in solutions.flatten() {
+            let iri = row.get("s").map(|t| term_str(t.into())).unwrap_or_default();
+            let type_val = row.get("type").map(|t| term_str(t.into())).unwrap_or_default();
+            let name = row.get("name").map(|t| term_str(t.into())).unwrap_or_default();
+            let status = row.get("status").map(|t| term_str(t.into()));
+            let path = row.get("path").map(|t| term_str(t.into()));
+            let document_type = row.get("docType").map(|t| term_str(t.into()));
+            let tags = fetch_tags(&store, ns, &iri);
+
+            if !iri.is_empty() {
+                nodes.push(GraphNode {
+                    iri, r#type: short_type(&type_val), name, status, path, document_type, tags,
+                });
+            }
+        }
+    }
+
+    Json(nodes)
+}
+
+pub async fn edges(State(state): State<Arc<AppState>>) -> Json<Vec<GraphEdge>> {
+    let ns = &state.config.namespace;
+    let p = &ns.prefix;
+    let pfx = crate::crud::prefixes(ns);
+    let store = state.store.lock().unwrap();
+
+    let edge_predicates = [
+        "relatedTo", "references", "hasRule", "hasDecision",
+        "hasMilestone", "hasTask", "calls", "importsFrom",
+        "contains", "hasMethod", "belongsTo", "hasTag",
+        "hasSection", "operatorNote",
+    ];
+
+    let filter = edge_predicates
+        .iter()
+        .map(|pred| format!("?p = {p}:{pred}"))
+        .collect::<Vec<_>>()
+        .join(" || ");
+
+    let sparql = format!(
+        "{pfx}\nSELECT ?s ?p ?o WHERE {{ GRAPH ?g {{ ?s ?p ?o . FILTER({filter}) }} }}"
+    );
+
+    let mut edges = Vec::new();
+
+    if let Ok(oxigraph::sparql::QueryResults::Solutions(solutions)) = store.query(&sparql) {
+        for row in solutions.flatten() {
+            let source = row.get("s").map(|t| term_str(t.into())).unwrap_or_default();
+            let predicate = row.get("p").map(|t| term_str(t.into())).unwrap_or_default();
+            let target = row.get("o").map(|t| term_str(t.into())).unwrap_or_default();
+
+            if !source.is_empty() && !target.is_empty() {
+                edges.push(GraphEdge { source, target, predicate: short_predicate(&predicate) });
+            }
+        }
+    }
+
+    Json(edges)
+}
+
+pub async fn search(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<SearchQuery>,
+) -> Json<Vec<GraphNode>> {
+    let Some(q) = params.q.filter(|s| !s.is_empty()) else {
+        return Json(vec![]);
+    };
+
+    let ns = &state.config.namespace;
+    let p = &ns.prefix;
+    let pfx = crate::crud::prefixes(ns);
+    let q_lower = q.to_lowercase();
+    let store = state.store.lock().unwrap();
+
+    // Search by name OR by note text (OperatorNote ops:text)
+    let sparql = format!(
+        "{pfx}\n\
+         SELECT ?s ?type ?name ?status WHERE {{\n\
+           {{ GRAPH ?g {{\n\
+             ?s rdf:type ?type . ?s {p}:name ?name .\n\
+             FILTER(CONTAINS(LCASE(?name), \"{q_lower}\"))\n\
+           }} }} UNION {{ GRAPH ?g {{\n\
+             ?s rdf:type {p}:OperatorNote . ?s {p}:text ?name .\n\
+             BIND({p}:OperatorNote AS ?type)\n\
+             FILTER(CONTAINS(LCASE(?name), \"{q_lower}\"))\n\
+           }} }}\n\
+           OPTIONAL {{ GRAPH ?g {{ ?s {p}:status ?status }} }}\n\
+         }}"
+    );
+
+    let mut nodes = Vec::new();
+
+    if let Ok(oxigraph::sparql::QueryResults::Solutions(solutions)) = store.query(&sparql) {
+        for row in solutions.flatten() {
+            let iri = row.get("s").map(|t| term_str(t.into())).unwrap_or_default();
+            let type_val = row.get("type").map(|t| term_str(t.into())).unwrap_or_default();
+            let name = row.get("name").map(|t| term_str(t.into())).unwrap_or_default();
+            let status = row.get("status").map(|t| term_str(t.into()));
+
+            if !iri.is_empty() {
+                nodes.push(GraphNode {
+                    iri, r#type: short_type(&type_val), name, status,
+                    path: None, document_type: None, tags: vec![],
+                });
+            }
+        }
+    }
+
+    Json(nodes)
+}
+
+pub async fn node_detail(
+    State(state): State<Arc<AppState>>,
+    Path(iri): Path<String>,
+) -> Json<Option<NodeDetail>> {
+    let ns = &state.config.namespace;
+    let pfx = crate::crud::prefixes(ns);
+    let decoded_iri = urldecode(&iri);
+    let store = state.store.lock().unwrap();
+
+    let props_sparql = format!(
+        "{pfx}\nSELECT ?p ?o WHERE {{ GRAPH ?g {{ <{decoded_iri}> ?p ?o }} }}"
+    );
+
+    let mut r#type = String::new();
+    let mut name = String::new();
+    let mut properties = serde_json::Map::new();
+    let mut outgoing = Vec::new();
+
+    if let Ok(oxigraph::sparql::QueryResults::Solutions(solutions)) = store.query(&props_sparql) {
+        for row in solutions.flatten() {
+            let pred = row.get("p").map(|t| term_str(t.into())).unwrap_or_default();
+            let obj = row.get("o").map(|t| term_str(t.into())).unwrap_or_default();
+
+            if pred.contains("rdf:type") || pred.contains("#type") {
+                r#type = short_type(&obj);
+            } else if pred.contains(":name") {
+                name = obj.clone();
+                properties.insert("name".into(), serde_json::Value::String(obj));
+            } else {
+                let short_pred = short_predicate(&pred);
+                if is_edge_predicate(&pred, &ns.prefix) {
+                    outgoing.push(GraphEdge {
+                        source: decoded_iri.clone(), target: obj, predicate: short_pred,
+                    });
+                } else {
+                    properties.insert(short_pred, serde_json::Value::String(obj));
+                }
+            }
+        }
+    }
+
+    if r#type.is_empty() {
+        return Json(None);
+    }
+
+    let incoming_sparql = format!(
+        "{pfx}\nSELECT ?s ?p WHERE {{ GRAPH ?g {{ ?s ?p <{decoded_iri}> }} }}"
+    );
+
+    let mut incoming = Vec::new();
+
+    if let Ok(oxigraph::sparql::QueryResults::Solutions(solutions)) = store.query(&incoming_sparql) {
+        for row in solutions.flatten() {
+            let source = row.get("s").map(|t| term_str(t.into())).unwrap_or_default();
+            let pred = row.get("p").map(|t| term_str(t.into())).unwrap_or_default();
+            if !source.is_empty() {
+                incoming.push(GraphEdge {
+                    source, target: decoded_iri.clone(), predicate: short_predicate(&pred),
+                });
+            }
+        }
+    }
+
+    let notes = fetch_notes(&store, ns, &decoded_iri);
+
+    Json(Some(NodeDetail {
+        iri: decoded_iri, r#type, name,
+        properties: serde_json::Value::Object(properties),
+        outgoing, incoming, notes,
+    }))
+}
+
+// ─── OperatorNotes API ──────────────────────────────────────
+
+pub async fn get_notes(
+    State(state): State<Arc<AppState>>,
+    Path(iri): Path<String>,
+) -> Json<Vec<NoteEntry>> {
+    let ns = &state.config.namespace;
+    let decoded_iri = urldecode(&iri);
+    let store = state.store.lock().unwrap();
+    Json(fetch_notes(&store, ns, &decoded_iri))
+}
+
+pub async fn add_note(
+    State(state): State<Arc<AppState>>,
+    Path(iri): Path<String>,
+    Json(body): Json<AddNoteBody>,
+) -> Result<Json<NoteEntry>, StatusCode> {
+    let ns = &state.config.namespace;
+    let p = &ns.prefix;
+    let pfx = crate::crud::prefixes(ns);
+    let decoded_iri = urldecode(&iri);
+
+    if body.text.trim().is_empty() {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    let store = state.store.lock().unwrap();
+
+    // Get next index
+    let existing = fetch_notes(&store, ns, &decoded_iri);
+    let next_index = existing.iter().map(|n| n.index).max().unwrap_or(0) + 1;
+
+    let now = crate::crud::now_iso();
+    let ws_slug = crate::crud::workspace_slug(&state.cwd);
+    let graph = crate::crud::workspace_graph_iri(ns, &ws_slug);
+
+    let note_slug = format!("note-{}-{next_index}",
+        decoded_iri.rsplit('/').next().unwrap_or("unknown"));
+    let note_iri = crate::crud::build_iri(ns, "note", &note_slug);
+    let escaped_text = body.text.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n");
+
+    let sparql = format!(
+        "{pfx}\nINSERT DATA {{\n\
+           GRAPH <{graph}> {{\n\
+             <{note_iri}> rdf:type {p}:OperatorNote ;\n\
+               {p}:text \"{escaped_text}\" ;\n\
+               {p}:index {next_index} ;\n\
+               {p}:createdAt \"{now}\"^^xsd:dateTime .\n\
+             <{decoded_iri}> {p}:operatorNote <{note_iri}> .\n\
+           }}\n\
+         }}"
+    );
+
+    if store.update(&sparql).is_err() {
+        return Err(StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    // Persist to disk
+    let _ = crate::store::write_back(&store, &state.trig_path);
+
+    Ok(Json(NoteEntry {
+        index: next_index,
+        text: body.text,
+        created_at: now,
+    }))
+}
+
+pub async fn update_note(
+    State(state): State<Arc<AppState>>,
+    Path((iri, index)): Path<(String, u32)>,
+    Json(body): Json<AddNoteBody>,
+) -> Result<Json<NoteEntry>, StatusCode> {
+    let ns = &state.config.namespace;
+    let p = &ns.prefix;
+    let pfx = crate::crud::prefixes(ns);
+    let decoded_iri = urldecode(&iri);
+    let store = state.store.lock().unwrap();
+
+    if body.text.trim().is_empty() {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    // Find the note IRI by matching parent + index
+    let find = format!(
+        "{pfx}\nSELECT ?note WHERE {{\n\
+           GRAPH ?g {{ <{decoded_iri}> {p}:operatorNote ?note . ?note {p}:index {index} }}\n\
+         }}"
+    );
+
+    let note_iri = if let Ok(oxigraph::sparql::QueryResults::Solutions(mut sol)) = store.query(&find) {
+        sol.find_map(|r| r.ok().and_then(|row| row.get("note").map(|t| term_str(t.into()))))
+    } else {
+        None
+    };
+
+    let Some(note_iri) = note_iri else {
+        return Err(StatusCode::NOT_FOUND);
+    };
+
+    let ws_slug = crate::crud::workspace_slug(&state.cwd);
+    let graph = crate::crud::workspace_graph_iri(ns, &ws_slug);
+    let escaped = body.text.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n");
+
+    let sparql = format!(
+        "{pfx}\n\
+         DELETE {{ GRAPH <{graph}> {{ <{note_iri}> {p}:text ?old }} }}\n\
+         INSERT {{ GRAPH <{graph}> {{ <{note_iri}> {p}:text \"{escaped}\" }} }}\n\
+         WHERE {{ GRAPH <{graph}> {{ <{note_iri}> {p}:text ?old }} }}"
+    );
+
+    if store.update(&sparql).is_err() {
+        return Err(StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    let _ = crate::store::write_back(&store, &state.trig_path);
+
+    // Get created_at for response
+    let created = {
+        let q = format!("{pfx}\nSELECT ?c WHERE {{ GRAPH ?g {{ <{note_iri}> {p}:createdAt ?c }} }}");
+        if let Ok(oxigraph::sparql::QueryResults::Solutions(mut s)) = store.query(&q) {
+            s.find_map(|r| r.ok().and_then(|row| row.get("c").map(|t| term_str(t.into()))))
+                .unwrap_or_default()
+        } else { String::new() }
+    };
+
+    Ok(Json(NoteEntry { index, text: body.text, created_at: created }))
+}
+
+pub async fn delete_note(
+    State(state): State<Arc<AppState>>,
+    Path((iri, index)): Path<(String, u32)>,
+) -> StatusCode {
+    let ns = &state.config.namespace;
+    let p = &ns.prefix;
+    let pfx = crate::crud::prefixes(ns);
+    let decoded_iri = urldecode(&iri);
+    let store = state.store.lock().unwrap();
+
+    // Find the note IRI
+    let find = format!(
+        "{pfx}\nSELECT ?note WHERE {{\n\
+           GRAPH ?g {{ <{decoded_iri}> {p}:operatorNote ?note . ?note {p}:index {index} }}\n\
+         }}"
+    );
+
+    let note_iri = if let Ok(oxigraph::sparql::QueryResults::Solutions(mut sol)) = store.query(&find) {
+        sol.find_map(|r| r.ok().and_then(|row| row.get("note").map(|t| term_str(t.into()))))
+    } else {
+        None
+    };
+
+    let Some(note_iri) = note_iri else {
+        return StatusCode::NOT_FOUND;
+    };
+
+    let ws_slug = crate::crud::workspace_slug(&state.cwd);
+    let graph = crate::crud::workspace_graph_iri(ns, &ws_slug);
+
+    // Delete all triples for this note + the edge from parent
+    let sparql = format!(
+        "{pfx}\n\
+         DELETE WHERE {{ GRAPH <{graph}> {{ <{note_iri}> ?p ?o }} }};\n\
+         DELETE WHERE {{ GRAPH <{graph}> {{ <{decoded_iri}> {p}:operatorNote <{note_iri}> }} }}"
+    );
+
+    if store.update(&sparql).is_err() {
+        return StatusCode::INTERNAL_SERVER_ERROR;
+    }
+
+    let _ = crate::store::write_back(&store, &state.trig_path);
+    StatusCode::NO_CONTENT
+}
+
+fn fetch_notes(store: &oxigraph::store::Store, ns: &crate::config::NamespaceConfig, iri: &str) -> Vec<NoteEntry> {
+    let p = &ns.prefix;
+    let pfx = crate::crud::prefixes(ns);
+    let sparql = format!(
+        "{pfx}\n\
+         SELECT ?text ?index ?created WHERE {{\n\
+           GRAPH ?g {{\n\
+             <{iri}> {p}:operatorNote ?note .\n\
+             ?note {p}:text ?text ;\n\
+               {p}:index ?index .\n\
+             OPTIONAL {{ ?note {p}:createdAt ?created }}\n\
+           }}\n\
+         }} ORDER BY ?index"
+    );
+
+    let mut notes = Vec::new();
+    if let Ok(oxigraph::sparql::QueryResults::Solutions(solutions)) = store.query(&sparql) {
+        for row in solutions.flatten() {
+            let text = row.get("text").map(|t| term_str(t.into())).unwrap_or_default();
+            let index: u32 = row.get("index").map(|t| term_str(t.into())).unwrap_or_default()
+                .parse().unwrap_or(0);
+            let created_at = row.get("created").map(|t| term_str(t.into())).unwrap_or_default();
+            notes.push(NoteEntry { index, text, created_at });
+        }
+    }
+    notes
+}
+
+// ─── Ops API ────────────────────────────────────────────────
+
+pub async fn ops_projects(State(state): State<Arc<AppState>>) -> Json<Vec<OpsProject>> {
+    let ns = &state.config.namespace;
+    let p = &ns.prefix;
+    let pfx = crate::crud::prefixes(ns);
+    let store = state.store.lock().unwrap();
+
+    // Get projects
+    let proj_sparql = format!(
+        "{pfx}\nSELECT ?s ?name ?status ?path WHERE {{\n\
+           GRAPH ?g {{ ?s rdf:type {p}:Project . ?s {p}:name ?name .\n\
+             OPTIONAL {{ ?s {p}:status ?status }}\n\
+             OPTIONAL {{ ?s {p}:path ?path }}\n\
+           }}\n\
+         }}"
+    );
+
+    let mut projects = Vec::new();
+
+    if let Ok(oxigraph::sparql::QueryResults::Solutions(solutions)) = store.query(&proj_sparql) {
+        for row in solutions.flatten() {
+            let iri = row.get("s").map(|t| term_str(t.into())).unwrap_or_default();
+            let name = row.get("name").map(|t| term_str(t.into())).unwrap_or_default();
+            let status = row.get("status").map(|t| term_str(t.into())).unwrap_or_else(|| "active".into());
+            let path = row.get("path").map(|t| term_str(t.into())).unwrap_or_default();
+
+            // Get milestones for this project
+            let ms_sparql = format!(
+                "{pfx}\nSELECT ?m ?mname ?mstatus WHERE {{\n\
+                   GRAPH ?g {{ <{iri}> {p}:hasMilestone ?m . ?m {p}:name ?mname .\n\
+                     OPTIONAL {{ ?m {p}:status ?mstatus }}\n\
+                   }}\n\
+                 }}"
+            );
+            let mut milestones = Vec::new();
+            if let Ok(oxigraph::sparql::QueryResults::Solutions(ms_sol)) = store.query(&ms_sparql) {
+                for mrow in ms_sol.flatten() {
+                    milestones.push(OpsMilestone {
+                        iri: mrow.get("m").map(|t| term_str(t.into())).unwrap_or_default(),
+                        name: mrow.get("mname").map(|t| term_str(t.into())).unwrap_or_default(),
+                        status: mrow.get("mstatus").map(|t| term_str(t.into())).unwrap_or_else(|| "active".into()),
+                    });
+                }
+            }
+
+            // Get tasks for this project
+            let task_sparql = format!(
+                "{pfx}\nSELECT ?t ?tname ?tstatus ?tpri WHERE {{\n\
+                   GRAPH ?g {{ <{iri}> {p}:hasTask ?t . ?t {p}:name ?tname .\n\
+                     OPTIONAL {{ ?t {p}:status ?tstatus }}\n\
+                     OPTIONAL {{ ?t {p}:priority ?tpri }}\n\
+                   }}\n\
+                 }}"
+            );
+            let mut tasks = Vec::new();
+            if let Ok(oxigraph::sparql::QueryResults::Solutions(t_sol)) = store.query(&task_sparql) {
+                for trow in t_sol.flatten() {
+                    tasks.push(OpsTask {
+                        iri: trow.get("t").map(|t| term_str(t.into())).unwrap_or_default(),
+                        name: trow.get("tname").map(|t| term_str(t.into())).unwrap_or_default(),
+                        status: trow.get("tstatus").map(|t| term_str(t.into())).unwrap_or_else(|| "active".into()),
+                        priority: trow.get("tpri").map(|t| term_str(t.into())).unwrap_or_else(|| "normal".into()),
+                        project: name.clone(),
+                        milestone: String::new(),
+                    });
+                }
+            }
+
+            projects.push(OpsProject { iri, name, status, path, milestones, tasks });
+        }
+    }
+
+    Json(projects)
+}
+
+pub async fn ops_decisions(State(state): State<Arc<AppState>>) -> Json<Vec<OpsDecision>> {
+    let ns = &state.config.namespace;
+    let p = &ns.prefix;
+    let pfx = crate::crud::prefixes(ns);
+    let store = state.store.lock().unwrap();
+
+    let sparql = format!(
+        "{pfx}\nSELECT ?name ?rationale ?created WHERE {{\n\
+           GRAPH ?g {{ ?d rdf:type {p}:Decision . ?d {p}:name ?name .\n\
+             OPTIONAL {{ ?d {p}:rationale ?rationale }}\n\
+             OPTIONAL {{ ?d {p}:createdAt ?created }}\n\
+           }}\n\
+         }} ORDER BY DESC(?created)"
+    );
+
+    let mut decisions = Vec::new();
+
+    if let Ok(oxigraph::sparql::QueryResults::Solutions(solutions)) = store.query(&sparql) {
+        for row in solutions.flatten() {
+            decisions.push(OpsDecision {
+                name: row.get("name").map(|t| term_str(t.into())).unwrap_or_default(),
+                rationale: row.get("rationale").map(|t| term_str(t.into())).unwrap_or_default(),
+                created_at: row.get("created").map(|t| term_str(t.into())).unwrap_or_default(),
+            });
+        }
+    }
+
+    Json(decisions)
+}
+
+pub async fn ops_reminders(State(state): State<Arc<AppState>>) -> Json<Vec<OpsReminder>> {
+    let ns = &state.config.namespace;
+    let p = &ns.prefix;
+    let pfx = crate::crud::prefixes(ns);
+    let store = state.store.lock().unwrap();
+
+    let sparql = format!(
+        "{pfx}\nSELECT ?name ?due WHERE {{\n\
+           GRAPH ?g {{ ?r rdf:type {p}:Reminder . ?r {p}:name ?name .\n\
+             OPTIONAL {{ ?r {p}:due ?due }}\n\
+           }}\n\
+         }} ORDER BY ?due"
+    );
+
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let mut reminders = Vec::new();
+
+    if let Ok(oxigraph::sparql::QueryResults::Solutions(solutions)) = store.query(&sparql) {
+        for row in solutions.flatten() {
+            let due = row.get("due").map(|t| term_str(t.into())).unwrap_or_default();
+            let overdue = !due.is_empty() && due < today;
+            reminders.push(OpsReminder {
+                name: row.get("name").map(|t| term_str(t.into())).unwrap_or_default(),
+                due, overdue,
+            });
+        }
+    }
+
+    Json(reminders)
+}
+
+// ─── Helpers ────────────────────────────────────────────────
+
+fn fetch_tags(store: &oxigraph::store::Store, ns: &crate::config::NamespaceConfig, iri: &str) -> Vec<String> {
+    let p = &ns.prefix;
+    let pfx = crate::crud::prefixes(ns);
+    let sparql = format!(
+        "{pfx}\nSELECT ?tag WHERE {{ GRAPH ?g {{ <{iri}> {p}:hasTag ?tag }} }}"
+    );
+    let mut tags = Vec::new();
+    if let Ok(oxigraph::sparql::QueryResults::Solutions(solutions)) = store.query(&sparql) {
+        for row in solutions.flatten() {
+            if let Some(t) = row.get("tag") {
+                let val = term_str(t.into());
+                if !val.is_empty() { tags.push(val); }
+            }
+        }
+    }
+    tags
+}
+
+fn term_str(term: oxigraph::model::TermRef<'_>) -> String {
+    match term {
+        oxigraph::model::TermRef::NamedNode(n) => n.as_str().to_string(),
+        oxigraph::model::TermRef::Literal(l) => l.value().to_string(),
+        oxigraph::model::TermRef::BlankNode(b) => b.as_str().to_string(),
+        _ => String::new(),
+    }
+}
+
+fn short_type(full: &str) -> String {
+    full.rsplit_once('#').or_else(|| full.rsplit_once(':')).or_else(|| full.rsplit_once('/'))
+        .map(|(_, short)| short.to_string()).unwrap_or_else(|| full.to_string())
+}
+
+fn short_predicate(full: &str) -> String { short_type(full) }
+
+fn is_edge_predicate(pred: &str, prefix: &str) -> bool {
+    let edge_preds = [
+        "relatedTo", "references", "hasRule", "hasDecision",
+        "hasMilestone", "hasTask", "calls", "importsFrom",
+        "contains", "hasMethod", "belongsTo", "operatorNote",
+    ];
+    edge_preds.iter().any(|ep| pred.contains(&format!("{prefix}:{ep}")) || pred.ends_with(&format!("#{ep}")))
+}
+
+fn urldecode(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    let mut chars = s.bytes();
+    while let Some(b) = chars.next() {
+        if b == b'%' {
+            let hi = chars.next().unwrap_or(b'0');
+            let lo = chars.next().unwrap_or(b'0');
+            let hex = [hi, lo];
+            if let Ok(s) = std::str::from_utf8(&hex) {
+                if let Ok(val) = u8::from_str_radix(s, 16) {
+                    result.push(val as char);
+                    continue;
+                }
+            }
+            result.push('%');
+            result.push(hi as char);
+            result.push(lo as char);
+        } else {
+            result.push(b as char);
+        }
+    }
+    result
+}

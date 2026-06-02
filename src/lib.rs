@@ -1,6 +1,7 @@
 pub mod command;
 pub mod config;
 pub mod crud;
+pub mod dashboard;
 pub mod domain;
 pub mod extract;
 pub mod hook;

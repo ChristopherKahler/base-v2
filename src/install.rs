@@ -35,7 +35,10 @@ pub fn run(carl_json_path: Option<&Path>, skip_hooks: bool) -> Result<()> {
         migrate_carl(&global_dir, carl_path)?;
     }
 
-    // Step 5: Seed system rules
+    // Step 5: Install AST extraction scripts
+    install_scripts(&binary_path, &global_dir)?;
+
+    // Step 6: Seed system rules
     seed_system_rules(&global_dir)?;
 
     // Step 6: Append BASE CLI section to ~/.claude/CLAUDE.md
@@ -402,7 +405,65 @@ fn migrate_carl(global_dir: &Path, carl_path: &Path) -> Result<()> {
     Ok(())
 }
 
-// ─── Step 5: Seed system rules ──────────────────────────────
+// ─── Step 5: Install scripts ────────────────────────────────
+
+fn install_scripts(binary_path: &Path, global_dir: &Path) -> Result<()> {
+    print!("5. Install AST scripts ... ");
+
+    let scripts_dest = global_dir.join("scripts").join("ast");
+    std::fs::create_dir_all(&scripts_dest)?;
+
+    // Find scripts relative to the binary source (dev builds) or cwd
+    let source_candidates = [
+        // Same directory as source repo
+        binary_path
+            .parent()
+            .and_then(|p| p.parent())
+            .map(|p| p.join("scripts").join("ast")),
+        // Cargo target dir (target/release/../scripts/ast → ../../scripts/ast)
+        binary_path
+            .parent()
+            .and_then(|p| p.parent())
+            .and_then(|p| p.parent())
+            .map(|p| p.join("scripts").join("ast")),
+        // Current working directory
+        Some(std::env::current_dir().unwrap_or_default().join("scripts").join("ast")),
+    ];
+
+    let source_dir = source_candidates
+        .iter()
+        .filter_map(|p| p.as_ref())
+        .find(|p| p.join("onto_ast.py").exists());
+
+    let Some(source_dir) = source_dir else {
+        println!("⊘ scripts/ast/ not found near binary — skipped");
+        println!("   Copy scripts/ast/ to {} manually", scripts_dest.display());
+        return Ok(());
+    };
+
+    // Copy all .py files
+    let mut count = 0;
+    for entry in std::fs::read_dir(source_dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.extension().map_or(false, |ext| ext == "py") {
+            let dest = scripts_dest.join(entry.file_name());
+            std::fs::copy(&path, &dest)?;
+            count += 1;
+        }
+    }
+
+    // Also copy requirements.txt if present
+    let req = source_dir.join("requirements.txt");
+    if req.exists() {
+        std::fs::copy(&req, scripts_dest.join("requirements.txt"))?;
+    }
+
+    println!("✓ ({count} scripts → {})", scripts_dest.display());
+    Ok(())
+}
+
+// ─── Step 6: Seed system rules ──────────────────────────────
 
 fn seed_system_rules(global_dir: &Path) -> Result<()> {
     print!("5. Seed system rules ... ");
@@ -459,31 +520,48 @@ The `base` binary is on PATH. Use these commands proactively during sessions —
 
 | Trigger | Command |
 |---------|---------|
+| Navigate code: find functions, callers, imports | `base ast query --contains "name"` or `--file`, `--calls`, `--imports` |
 | A decision is made (architectural, process, tooling) | `base decision log --domain X --decision "..." --rationale "..."` |
 | An insight, correction, or lesson emerges | `base learn --text "..." --domain X --type insight\|correction\|decision` |
 | User defines or refines a behavioral rule | `base rule add --domain X --text "..."` |
 | Before making assumptions about prior context | `base recall --keyword "..."` or `base recall --domain X` |
 | User asks to scaffold a new workspace | `base scaffold [path]` |
 
-### Commands reference
+### Code navigation (use INSTEAD of grep/rg for code search)
 
-- `base learn --text "..." [--domain X] [--type insight]` — structured memory with relational edges
+- `base ast query --contains "auth"` (or `base a q -c "auth"`) — find entities by name
+- `base ast query --file "main.rs"` (or `base a q -f "main.rs"`) — list entities in a file
+- `base ast query --calls "validate"` — find all callers of a function
+- `base ast query --imports "config.rs"` (or `base a q -i "config.rs"`) — find importers
+
+### Project management
+
+- `base project add --name "..." --path "src/x"` (or `base p a -n "..." -p "src/x"`) — register a project
+- `base project list` (or `base p l`) — list projects
+- `base milestone add --project X --name "..."` (or `base m a -p X -n "..."`) — add a milestone
+- `base task add --project X --name "..."` (or `base t a -p X -n "..."`) — add a task
+- `base task done <slug>` — mark complete
+
+### Knowledge & memory
+
+- `base learn --text "..." --domain X --type insight` — structured memory with relational edges
 - `base recall --keyword "..." [--domain X]` — graph-backed relational search
-- `base rule add --domain X --text "..."` — add a rule to a domain (graph-native)
-- `base rule list --domain X` — show rules for a domain
-- `base rule remove --domain X --index N` — remove a rule
 - `base decision log --domain X --decision "..." --rationale "..."` — log a decision
 - `base decision search --keyword "..."` — find prior decisions
-- `base project add --name "..." --status active` — register a project
-- `base task add --project X --name "..."` — add a task
-- `base scaffold [path]` — set up a new workspace
+- `base rule add --domain X --text "..."` — add a rule to a domain
+
+### Sync & dashboard
+
+- `base sync` — extract markdown metadata + body into graph
+- `base sync --ast` — extract code structure (tree-sitter, 35+ languages)
+- `base dashboard` (or `base dash`) — launch Command Center web dashboard
 
 ### What happens automatically (via hooks)
 
 - **Session start:** Graph syncs domains, ingests paul.toml projects, runs signals
 - **User prompt:** Matches keywords → injects domain rules + decisions + notes from graph
-- **Pre-tool-use:** Matches file paths → injects relevant domain rules before tool executes
-- **Post-tool-use:** Updates lastActive timestamps in graph
+- **Pre-tool-use:** Matches file paths → injects AST file map + domain rules. Intercepts grep with graph hint. Injects markdown extraction contract on Write/Edit of .md files.
+- **Post-tool-use:** Updates timestamps. Injects section-specific AST context for partial reads.
 
 ### Architecture
 

@@ -53,6 +53,21 @@ pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Res
             }
         }
 
+        // ─── Markdown authoring guidance (Write/Edit on .md) ─────
+        let tool_name = event
+            .get("tool_name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        if tool_name == "Write" || tool_name == "Edit" {
+            for fp in &file_paths {
+                if fp.to_str().map_or(false, |s| s.ends_with(".md")) {
+                    output.push_str(MARKDOWN_GUIDANCE);
+                    output.push('\n');
+                    break;
+                }
+            }
+        }
+
         // ─── AST file map injection (source files) ──────────────
         for fp in &file_paths {
             if let Some(fp_str) = fp.to_str() {
@@ -290,6 +305,25 @@ fn load_workspace_graph(cwd: &Path) -> Option<oxigraph::store::Store> {
     }
     crate::store::load_graph(&trig_path).ok()
 }
+
+const MARKDOWN_GUIDANCE: &str = "\
+<mop-markdown>
+This markdown file feeds a knowledge graph. Structure it for extraction:
+
+FRONTMATTER (between --- delimiters):
+  type: doc|decision|note|spec|plan|summary
+  status: draft|active|complete|archived
+  tags: [specific, searchable, terms]
+  relatedTo: [entity-slug-1, entity-slug-2]
+
+BODY PATTERNS (extracted as graph edges — use intentionally):
+  ## Headings        → hasSection edges (document structure + search)
+  [text](path.md)    → references edges to other documents
+  [[entity-name]]    → references edges to named entities
+  @path/to/file      → references edges to documents
+  Tags become individual graph edges — be specific, not generic
+  relatedTo links to real entity slugs — check existing entities
+</mop-markdown>";
 
 fn extract_file_paths(event: &serde_json::Value) -> Vec<PathBuf> {
     let mut paths = Vec::new();
