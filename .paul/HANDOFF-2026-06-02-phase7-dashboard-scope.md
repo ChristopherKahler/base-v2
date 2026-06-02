@@ -95,10 +95,46 @@
 
 ---
 
+## Queued Improvements (do before or during dashboard)
+
+### MOP PreToolUse Hook for Markdown Files
+Add to `pre_tool_use.rs`: when Claude is about to Write/Edit a `.md` file, inject the MOP frontmatter template (~50 tokens). Fires only on markdown. Replaces the GLOBAL rule that Claude has to remember. ~15 min add.
+
+Inject this:
+```
+<mop-frontmatter>
+This is a markdown file. Include YAML frontmatter for graph extraction:
+---
+type: [doc|decision|note|spec|plan|summary]
+status: [draft|active|complete|archived]
+tags: [relevant, searchable, terms]
+relatedTo: [entity-slug-1, entity-slug-2]
+---
+</mop-frontmatter>
+```
+
+### Rich Markdown Extraction (frontmatter.rs overhaul)
+Current extraction is frontmatter-only. Missing all body content. Upgrade to extract:
+
+| Source | What to extract | Graph triple |
+|--------|----------------|--------------|
+| `relatedTo: [entity-a, entity-b]` | Entity edges from frontmatter | `<doc> ops:relatedTo <ops:entity/entity-a>` |
+| `tags: [rust, sparql, hooks]` | Individual tag triples (currently stuffed into one description string) | `<doc> ops:hasTag "rust"` per tag |
+| `## Heading` | Document section structure | `<doc> ops:hasSection "Heading"` |
+| `[link text](path/to/file.md)` | Markdown link file references | `<doc> ops:references <ops:doc/path-to-file>` |
+| `[[wikilink]]` | Wikilink entity references | `<doc> ops:references <ops:entity/wikilink>` |
+| `@path/to/file` | @-mention file references | `<doc> ops:references <ops:doc/path-to-file>` |
+
+This is pure Rust string parsing in `extract/frontmatter.rs`. No new dependencies. The graph gets dramatically richer - every markdown document becomes a connected node with real edges to other entities, not just an isolated blob with a name and status.
+
+Both of these feed directly into the dashboard: richer graph data = richer graph explorer visualization.
+
+---
+
 ## State Summary
 
 **Current:** Phase 7 in progress (2 plans complete, v1 migration dropped), Phase 8 scoped
-**Git:** 6 commits this session, latest `1af05e4`
+**Git:** 8 commits this session, latest `eb86083`
 **Tests:** 117/117 passing
 **Binary:** installed at `~/.local/bin/base`
 **Next:** Fresh session → `/paul:resume` → Phase 8 Plan 01 (Dashboard MVP)
@@ -106,3 +142,4 @@
 ---
 
 *Handoff created: 2026-06-02 10:26 CDT*
+*Updated: 2026-06-02 10:38 CDT — added MOP hook + rich markdown extraction queue*
