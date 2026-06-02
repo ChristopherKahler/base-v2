@@ -130,15 +130,50 @@ Phases: 6 of 9 complete (Phase 7 in progress)
 - Cutover: remove v1 MCP server, hooks, JSON files
 - Fidelity check (100% records)
 
-### Phase 8: Dashboard (optional)
+### Phase 8: Command Center Dashboard
 
-**Goal:** Rebuild the operator dashboard against SPARQL.
+**Goal:** A local web dashboard served by the base binary itself (`base dashboard`). Four panels covering graph exploration, business operations, live session activity, and usage analytics. The visual surface that makes BASE tangible and marketable.
 **Depends on:** Phase 7
-**Research:** Unlikely
+**Research:** axum/warp for embedded HTTP, D3.js for graph viz, WebSocket for live panel, ccusage JSONL format for usage data.
 
 **Scope:**
-- SPARQL-backed views (deferred / optional)
+
+**Panel 1: Graph Explorer**
+- D3.js force-directed graph visualization
+- Nodes color-coded by entity type (code=blue, projects=green, people=orange, decisions=yellow)
+- Click node → expand neighborhood, show relationships, line numbers for code entities
+- Filter by entity type, domain, project
+- Search bar (runs ast query --contains visually)
+
+**Panel 2: Operations View**
+- Kanban board: columns by status (active/blocked/completed/pending), cards are tasks
+- Table view: sortable/filterable table of projects → milestones → tasks
+- Toggle between kanban and table (same data, two views)
+- People and their project connections
+- Recent decisions with rationale
+- Overdue reminders highlighted
+
+**Panel 3: Session Activity (live)**
+- WebSocket-fed log of hook events in real-time
+- Which hooks fired, what domains matched, what got injected vs suppressed
+- Context bracket state progression through the session
+- AST injection log: which files got maps, which sections got detail
+- Hooks append to a log file, server tails and pushes via WebSocket
+
+**Panel 4: Usage Analytics**
+- Fork/fold ccusage (apps/ccusage) JSONL parsing for Claude Code token usage
+- Daily/weekly/monthly token usage charts
+- Cost tracking and model distribution (Opus/Sonnet/Haiku)
+- Session-level breakdown (which sessions burned the most tokens)
+- Per-project usage attribution (via session → workspace → project mapping)
+
+**Architecture:**
+- `base dashboard` starts embedded axum HTTP server on localhost, opens browser
+- Frontend: SPA (React or Svelte) compiled to static assets, embedded in binary via include_dir!
+- Backend: SPARQL queries against graph.trig + ccusage JSONL parsing → JSON API endpoints
+- Live data: WebSocket for session activity panel, hooks append to structured log file
+- No external dependencies for the user — one command, one binary
 
 ---
 *Roadmap created: 2026-05-29*
-*Last updated: 2026-05-31 — Realigned to Rust CLI architecture (ARCHITECTURE.md)*
+*Last updated: 2026-06-02 — Phase 8 scoped as Command Center Dashboard*
