@@ -1,13 +1,14 @@
 <script>
   import GraphExplorer from './panels/GraphExplorer.svelte';
   import OperationsPanel from './panels/OperationsPanel.svelte';
+  import SessionActivity from './panels/SessionActivity.svelte';
 
   let activePanel = 'graph';
 
   const panels = [
     { id: 'graph', label: 'Graph Explorer', color: 'var(--primary)', ready: true },
     { id: 'operations', label: 'Operations', color: 'var(--green)', ready: true },
-    { id: 'session', label: 'Session Activity', color: 'var(--accent-cyan)', ready: false },
+    { id: 'session', label: 'Session Activity', color: 'var(--accent-cyan)', ready: true },
     { id: 'usage', label: 'Usage Analytics', color: 'var(--accent-purple)', ready: false },
   ];
 </script>
@@ -42,8 +43,7 @@
     {:else if activePanel === 'operations'}
       <OperationsPanel />
     {:else if activePanel === 'session'}
-      <div class="main-header"><h2>Session Activity</h2></div>
-      <div class="main-content"><div class="empty-state"><h3>Session panel coming in Plan 03</h3></div></div>
+      <SessionActivity />
     {:else if activePanel === 'usage'}
       <div class="main-header"><h2>Usage Analytics</h2></div>
       <div class="main-content"><div class="empty-state"><h3>Usage panel coming in Plan 03</h3></div></div>

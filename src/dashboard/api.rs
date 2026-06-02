@@ -2,7 +2,9 @@ use std::sync::Arc;
 
 use axum::Json;
 use axum::extract::{Path, Query, State};
+use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::http::StatusCode;
+use axum::response::IntoResponse;
 use serde::{Deserialize, Serialize};
 
 use super::server::AppState;
@@ -98,6 +100,11 @@ pub struct OpsReminder {
     pub name: String,
     pub due: String,
     pub overdue: bool,
+}
+
+#[derive(Deserialize)]
+pub struct UpdateStatusBody {
+    pub status: String,
 }
 
 // ─── Graph API ──────────────────────────────────────────────
@@ -645,6 +652,54 @@ pub async fn ops_reminders(State(state): State<Arc<AppState>>) -> Json<Vec<OpsRe
     Json(reminders)
 }
 
+// ─── Task status update ─────────────────────────────────────
+
+pub async fn update_task_status(
+    Path(iri): Path<String>,
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<UpdateStatusBody>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let iri = urldecode(&iri);
+    let ns = &state.config.namespace;
+    let p = &ns.prefix;
+    let pfx = crate::crud::prefixes(ns);
+
+    let valid = ["active", "in_progress", "blocked", "completed", "pending"];
+    if !valid.contains(&body.status.as_str()) {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    let mut store = state.store.lock().unwrap();
+
+    // Verify entity exists
+    let check = format!(
+        "{pfx}\nASK {{ GRAPH ?g {{ <{iri}> rdf:type ?t }} }}"
+    );
+    match store.query(&check) {
+        Ok(oxigraph::sparql::QueryResults::Boolean(true)) => {}
+        _ => return Err(StatusCode::NOT_FOUND),
+    }
+
+    // Delete old status, insert new
+    let update = format!(
+        "{pfx}\n\
+         DELETE {{ GRAPH ?g {{ <{iri}> {p}:status ?old }} }}\n\
+         INSERT {{ GRAPH ?g {{ <{iri}> {p}:status \"{}\" }} }}\n\
+         WHERE  {{ GRAPH ?g {{ <{iri}> {p}:status ?old }} }}",
+        body.status
+    );
+    store.update(&update).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // Write back to disk
+    crate::store::write_back(&store, &state.trig_path)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(Json(serde_json::json!({
+        "iri": iri,
+        "status": body.status,
+    })))
+}
+
 // ─── Helpers ────────────────────────────────────────────────
 
 fn fetch_tags(store: &oxigraph::store::Store, ns: &crate::config::NamespaceConfig, iri: &str) -> Vec<String> {
@@ -712,4 +767,65 @@ fn urldecode(s: &str) -> String {
         }
     }
     result
+}
+
+// ─── WebSocket: Session Activity ────────────────────────────
+
+/// WebSocket upgrade handler for live session activity feed.
+pub async fn ws_session(
+    ws: WebSocketUpgrade,
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    ws.on_upgrade(move |socket| handle_ws_session(socket, state))
+}
+
+/// Tail hook-events.jsonl and push new lines to the WebSocket client.
+async fn handle_ws_session(mut socket: WebSocket, state: Arc<AppState>) {
+    use tokio::time::Duration;
+
+    let log_path = match state.trig_path.parent() {
+        Some(base_dir) => base_dir.join("hook-events.jsonl"),
+        None => return,
+    };
+
+    eprintln!("[ws] session connected, tailing: {}", log_path.display());
+
+    // Read current file and backfill last 100 lines
+    let mut last_line_count = 0;
+    if let Ok(content) = std::fs::read_to_string(&log_path) {
+        let lines: Vec<&str> = content.lines().filter(|l| !l.is_empty()).collect();
+        last_line_count = lines.len();
+        let start = lines.len().saturating_sub(100);
+        for line in &lines[start..] {
+            if socket.send(Message::Text((*line).to_string().into())).await.is_err() {
+                return;
+            }
+        }
+        eprintln!("[ws] backfill sent {} events (of {} total)", lines.len().min(100), lines.len());
+    }
+
+    // Tail loop: check file for new lines every 500ms
+    loop {
+        match tokio::time::timeout(Duration::from_millis(500), socket.recv()).await {
+            Ok(Some(Ok(_))) => continue,
+            Ok(Some(Err(_))) | Ok(None) => {
+                eprintln!("[ws] session disconnected");
+                return;
+            }
+            Err(_) => {} // Timeout — check the file
+        }
+
+        if let Ok(content) = std::fs::read_to_string(&log_path) {
+            let lines: Vec<&str> = content.lines().filter(|l| !l.is_empty()).collect();
+            if lines.len() > last_line_count {
+                for line in &lines[last_line_count..] {
+                    if socket.send(Message::Text((*line).to_string().into())).await.is_err() {
+                        return;
+                    }
+                }
+                eprintln!("[ws] pushed {} new events", lines.len() - last_line_count);
+                last_line_count = lines.len();
+            }
+        }
+    }
 }

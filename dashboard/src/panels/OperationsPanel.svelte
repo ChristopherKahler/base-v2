@@ -1,6 +1,6 @@
 <script>
   import { onMount } from 'svelte';
-  import { getProjects, getDecisions, getReminders } from '../lib/api.js';
+  import { getProjects, getDecisions, getReminders, updateTaskStatus } from '../lib/api.js';
 
   let projects = [];
   let decisions = [];
@@ -48,6 +48,65 @@
     return map[status] || 'var(--ink-subtle)';
   }
 
+  // Drag-and-drop state
+  let dragIri = null;
+  let dragOverCol = null;
+
+  const statusMap = {
+    active: 'active',
+    blocked: 'blocked',
+    completed: 'completed',
+    pending: 'pending',
+  };
+
+  function onDragStart(e, task) {
+    dragIri = task.iri;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', task.iri);
+    // Use only the card element as the drag ghost, not the parent column
+    e.dataTransfer.setDragImage(e.currentTarget, e.offsetX, e.offsetY);
+  }
+
+  function onDragOver(e, colKey) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    dragOverCol = colKey;
+  }
+
+  function onDragLeave(e, colKey) {
+    if (dragOverCol === colKey) dragOverCol = null;
+  }
+
+  async function onDrop(e, colKey) {
+    e.preventDefault();
+    dragOverCol = null;
+    const iri = dragIri;
+    dragIri = null;
+    if (!iri) return;
+
+    const newStatus = statusMap[colKey];
+    if (!newStatus) return;
+
+    // Optimistic update: move the task locally
+    projects = projects.map(p => ({
+      ...p,
+      tasks: p.tasks.map(t => t.iri === iri ? { ...t, status: newStatus } : t),
+    }));
+
+    // Persist to graph
+    const result = await updateTaskStatus(iri, newStatus);
+    if (!result) {
+      // Revert on failure — reload from server
+      const [p] = await Promise.all([getProjects()]);
+      projects = p;
+    }
+  }
+
+  function onDragEnd() {
+    dragIri = null;
+    dragOverCol = null;
+  }
+
   onMount(async () => {
     const [p, d, r] = await Promise.all([getProjects(), getDecisions(), getReminders()]);
     projects = p;
@@ -93,15 +152,30 @@
     {#if viewMode === 'kanban'}
       <div class="kanban">
         {#each [['Active', 'active', 'var(--green)'], ['Blocked', 'blocked', 'var(--red)'], ['Completed', 'completed', 'var(--ink-tertiary)'], ['Pending', 'pending', 'var(--ink-subtle)']] as [label, key, color]}
-          <div class="kanban-col">
+          <div
+            class="kanban-col"
+            class:drop-target={dragOverCol === key}
+            role="group"
+            aria-label="{label} tasks"
+            on:dragover={(e) => onDragOver(e, key)}
+            on:dragleave={(e) => onDragLeave(e, key)}
+            on:drop={(e) => onDrop(e, key)}
+          >
             <div class="kanban-col-header">
               <span class="kanban-col-dot" style="background: {color}"></span>
               <span>{label}</span>
               <span class="kanban-col-count">{kanbanColumns[key].length}</span>
             </div>
             <div class="kanban-col-cards">
-              {#each kanbanColumns[key] as task}
-                <div class="kanban-card">
+              {#each kanbanColumns[key] as task (task.iri)}
+                <div
+                  class="kanban-card"
+                  class:dragging={dragIri === task.iri}
+                  draggable="true"
+                  role="listitem"
+                  on:dragstart={(e) => onDragStart(e, task)}
+                  on:dragend={onDragEnd}
+                >
                   <div class="kanban-card-name">{task.name}</div>
                   <div class="kanban-card-meta">
                     <span class="kanban-card-project">{task.project}</span>
@@ -193,3 +267,20 @@
     </div>
   {/if}
 </div>
+
+<style>
+  :global(.kanban-col.drop-target) {
+    outline: 2px solid var(--primary);
+    outline-offset: -2px;
+    background: rgba(88, 139, 248, 0.05) !important;
+  }
+  :global(.kanban-card.dragging) {
+    opacity: 0.4;
+  }
+  :global(.kanban-card[draggable="true"]) {
+    cursor: grab;
+  }
+  :global(.kanban-card[draggable="true"]:active) {
+    cursor: grabbing;
+  }
+</style>

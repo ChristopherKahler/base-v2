@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 
 use axum::Router;
 use axum::response::Html;
-use axum::routing::{delete, get, post, put};
+use axum::routing::{delete, get, patch, post, put};
 use include_dir::{Dir, include_dir};
 use tower_http::cors::CorsLayer;
 
@@ -59,6 +59,10 @@ pub async fn start(port: u16, cwd: PathBuf) {
         .route("/api/ops/projects", get(super::api::ops_projects))
         .route("/api/ops/decisions", get(super::api::ops_decisions))
         .route("/api/ops/reminders", get(super::api::ops_reminders))
+        // Task status
+        .route("/api/ops/task/{iri}/status", patch(super::api::update_task_status))
+        // WebSocket
+        .route("/api/ws/session", get(super::api::ws_session))
         .fallback(get(serve_static))
         .layer(CorsLayer::permissive())
         .with_state(state);
@@ -89,10 +93,15 @@ pub async fn start(port: u16, cwd: PathBuf) {
     println!("\nDashboard stopped.");
 }
 
-async fn serve_index() -> Html<String> {
+async fn serve_index() -> axum::response::Response {
+    use axum::http::header;
+    use axum::response::IntoResponse;
     match DASHBOARD_DIR.get_file("index.html") {
-        Some(file) => Html(file.contents_utf8().unwrap_or("").to_string()),
-        None => Html("<h1>Dashboard assets not found</h1><p>Run <code>cd dashboard && npm install && npm run build</code></p>".to_string()),
+        Some(file) => (
+            [(header::CONTENT_TYPE, "text/html"), (header::CACHE_CONTROL, "no-cache")],
+            file.contents_utf8().unwrap_or(""),
+        ).into_response(),
+        None => Html("<h1>Dashboard assets not found</h1>".to_string()).into_response(),
     }
 }
 

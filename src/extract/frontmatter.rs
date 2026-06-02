@@ -52,7 +52,7 @@ pub fn extract(content: &str, file_path: &str, ns: &NamespaceConfig) -> Option<V
             _ => {
                 triples.push((
                     format!("{p}:description"),
-                    format!("\"{}: {}\"", key, escape(value)),
+                    format!("\"{}: {}\"", escape(key), escape(value)),
                 ));
             }
         }
@@ -91,7 +91,7 @@ fn parse_frontmatter(content: &str) -> Option<Vec<(String, String)>> {
     let mut pairs = Vec::new();
     for line in fm_text.lines() {
         let line = line.trim();
-        if line.is_empty() || line.starts_with('#') {
+        if line.is_empty() || line.starts_with('#') || line.starts_with('-') {
             continue;
         }
         if let Some((key, value)) = line.split_once(':') {

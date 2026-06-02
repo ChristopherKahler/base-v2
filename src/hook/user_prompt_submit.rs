@@ -9,15 +9,15 @@ use crate::domain;
 use crate::domain::matcher::match_domains;
 use crate::domain::session::{rules_hash, Bracket, SessionState};
 
-pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Result<()> {
+pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Result<super::HookEventData> {
     let prompt = extract_prompt(event);
     if prompt.is_empty() {
-        return Ok(());
+        return Ok(super::HookEventData::default());
     }
 
     let domains = domain::load_domains(cwd);
     if domains.is_empty() {
-        return Ok(());
+        return Ok(super::HookEventData::default());
     }
 
     let base_dir = crate::config::find_workspace_base(cwd);
@@ -45,7 +45,10 @@ pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Res
                 let _ = session.save(base_dir);
             }
             print!("{cmd_output}");
-            return Ok(());
+            return Ok(super::HookEventData {
+                prompt_num: Some(session.prompt_count),
+                ..Default::default()
+            });
         }
     }
 
@@ -58,7 +61,10 @@ pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Res
         if let Some(ref base_dir) = base_dir {
             let _ = session.save(base_dir);
         }
-        return Ok(());
+        return Ok(super::HookEventData {
+            prompt_num: Some(session.prompt_count),
+            ..Default::default()
+        });
     }
 
     // Ensure domain sync has run (auto-sync if domains.toml is newer than graph)
@@ -210,7 +216,24 @@ pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Res
         print!("{}", output.trim_end());
     }
 
-    Ok(())
+    // Build event data for JSONL logging
+    let domains_matched: Vec<String> = loaded_domains
+        .iter()
+        .filter(|(_, reason, _)| !reason.starts_with("dedup"))
+        .map(|(name, _, _)| name.clone())
+        .collect();
+    let total_rules: usize = loaded_domains
+        .iter()
+        .filter(|(_, reason, _)| !reason.starts_with("dedup"))
+        .map(|(_, _, count)| count)
+        .sum();
+
+    Ok(super::HookEventData {
+        domains_matched,
+        rules_injected: total_rules,
+        suppressed: deduped_count,
+        prompt_num: Some(session.prompt_count),
+    })
 }
 
 // ─── DEVMODE output ─────────────────────────────────────────

@@ -67,3 +67,18 @@ export async function getReminders() {
   try { const r = await fetch(`${BASE}/api/ops/reminders`); return r.ok ? await r.json() : []; }
   catch { return []; }
 }
+
+export function createSessionWs() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return new WebSocket(`${proto}//${location.host}/api/ws/session`);
+}
+
+export async function updateTaskStatus(iri, status) {
+  try {
+    const r = await fetch(`${BASE}/api/ops/task/${encodeURIComponent(iri)}/status`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    });
+    return r.ok ? await r.json() : null;
+  } catch { return null; }
+}
