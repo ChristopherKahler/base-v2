@@ -211,7 +211,7 @@
       <div class="stat-card">
         <span class="stat-label">Sessions</span>
         <span class="stat-value">{summary.session_count}</span>
-        <span class="stat-sub">last 30 days</span>
+        <span class="stat-sub">last {days} days</span>
       </div>
       <div class="stat-card">
         <span class="stat-label">Primary Model</span>
