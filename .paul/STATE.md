@@ -11,9 +11,9 @@ See: .paul/PROJECT.md (updated 2026-06-01)
 
 Milestone: v0.1 Proactive Context Engine
 Phase: 7 of 8 (v1 Migration + Cutover) — In Progress
-Plan: 02 complete (AST Context Injection)
-Status: Loop closed. Ready for Plan 03 or commit.
-Last activity: 2026-06-02 09:16 — AST query command, PreToolUse file map + grep intercept, PostToolUse section context
+Plan: 02 complete (AST Context Injection) + uninstall, aliases, audit fixes shipped post-plan
+Status: Phase 8 scoped. Ready for dashboard build.
+Last activity: 2026-06-02 10:26 — Phase 8 scoped, README overhauled, uninstall + aliases + extension coverage shipped
 
 Progress:
 - Milestone: [█████████░] 94%
@@ -66,9 +66,10 @@ Branch: main
 
 ## Session Continuity
 
-Last session: 2026-06-02 09:16
-Stopped at: Plan 02 unified. AST context injection shipped.
-Next action: Commit Plans 01+02 changes → Plan 03 (v1 JSON → triples migration)
+Last session: 2026-06-02 10:26
+Stopped at: Phase 7 Plans 01-02 shipped + audit fixes. Phase 8 dashboard scoped. README overhauled.
+Next action: Phase 8 Plan 01 — MVP Command Center Dashboard
+Resume file: .paul/HANDOFF-2026-06-02-phase7-dashboard-scope.md
 Resume file: .paul/phases/07-v1-migration-cutover/07-02-SUMMARY.md
 
 ---
