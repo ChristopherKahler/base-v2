@@ -81,7 +81,9 @@ pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Res
     let mut deduped_count = 0usize;
 
     // Format and emit matched rules
-    for domain_def in &matched {
+    for dm in &matched {
+        let domain_def = dm.domain;
+
         // Try graph-backed injection first, fall back to TOML rules
         let (rules_text, neighborhood_text) = match &graph_store {
             Some(store) => {
@@ -149,15 +151,23 @@ pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Res
 
         if session.is_injected(&domain_def.name, combined_hash) {
             deduped_count += 1;
+            let dedup_reason = if config.devmode.enabled {
+                format!("dedup [{}]", dm.reason)
+            } else {
+                "dedup".into()
+            };
             loaded_domains.push((
                 domain_def.name.clone(),
-                "dedup".into(),
+                dedup_reason,
                 injected_rule_count,
             ));
             continue;
         }
 
-        let match_reason = if domain_def.is_always() {
+        // Use the actual match reason from the matcher (only meaningful in DEVMODE)
+        let match_reason = if config.devmode.enabled {
+            format!("{}", dm.reason)
+        } else if domain_def.is_always() {
             "always_on".to_string()
         } else {
             "matched".to_string()
@@ -223,7 +233,7 @@ pub fn format_devmode_block(
     out.push_str("---\n```\n");
     out.push_str("🔧 DEVMODE\n");
     out.push_str("Bracket: [X] (prompt N)\n");
-    out.push_str("Loaded: domain1 (N rules), domain2 (dedup)\n");
+    out.push_str("Loaded: domain1 [reason] (N rules), domain2 [reason] (dedup)\n");
     out.push_str("Available: domain3, domain4, ...\n");
     out.push_str("Dedup: N skipped\n");
     out.push_str("Tools: tools used this response, or 'none'\n");
@@ -238,9 +248,9 @@ pub fn format_devmode_block(
     // Loaded domains
     out.push_str("LOADED DOMAINS:\n");
     for (name, reason, rule_count) in loaded {
-        if reason == "dedup" {
+        if reason.starts_with("dedup") {
             out.push_str(&format!(
-                "  [{name}] dedup (prompt {prompt_count})\n"
+                "  [{name}] {reason} (prompt {prompt_count})\n"
             ));
         } else {
             out.push_str(&format!(

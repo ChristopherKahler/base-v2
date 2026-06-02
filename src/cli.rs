@@ -26,10 +26,20 @@ pub enum Commands {
         /// Hook event type
         event: String,
     },
+    /// Query AST codebase graph (entities, calls, imports)
+    Ast {
+        #[command(subcommand)]
+        action: AstAction,
+    },
     /// Manage projects
     Project {
         #[command(subcommand)]
         action: ProjectAction,
+    },
+    /// Manage milestones (epics within a project)
+    Milestone {
+        #[command(subcommand)]
+        action: MilestoneAction,
     },
     /// Manage tasks
     Task {
@@ -138,6 +148,25 @@ pub enum OperatorAction {
 }
 
 #[derive(Subcommand)]
+pub enum AstAction {
+    /// Query AST graph for entities, calls, and imports
+    Query {
+        /// Find entities by name (case-insensitive substring match)
+        #[arg(long)]
+        contains: Option<String>,
+        /// List all entities in a source file with relationships
+        #[arg(long)]
+        file: Option<String>,
+        /// Find all callers of a named entity
+        #[arg(long)]
+        calls: Option<String>,
+        /// Find all files that import from a given file
+        #[arg(long)]
+        imports: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
 pub enum ProjectAction {
     /// Add a new project
     Add {
@@ -151,9 +180,9 @@ pub enum ProjectAction {
     },
     /// List all projects
     List,
-    /// Show a specific project
+    /// Show a specific project (accepts slug or display name)
     Get { slug: String },
-    /// Update a project
+    /// Update a project (accepts slug or display name)
     Update {
         slug: String,
         #[arg(long)]
@@ -166,20 +195,58 @@ pub enum ProjectAction {
 }
 
 #[derive(Subcommand)]
-pub enum TaskAction {
-    /// Add a task to a project
+pub enum MilestoneAction {
+    /// Add a milestone to a project
     Add {
+        /// Project slug or display name
+        #[arg(long)]
+        project: String,
+        #[arg(long)]
+        name: String,
+        #[arg(long)]
+        description: Option<String>,
+    },
+    /// List milestones (optionally filtered by project)
+    List {
+        /// Project slug or display name
+        #[arg(long)]
+        project: Option<String>,
+    },
+    /// Show a specific milestone
+    Get { slug: String },
+    /// Update a milestone
+    Update {
+        slug: String,
+        #[arg(long)]
+        status: Option<String>,
+        #[arg(long)]
+        description: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum TaskAction {
+    /// Add a task to a project (optionally under a milestone)
+    Add {
+        /// Project slug or display name
         #[arg(long)]
         project: String,
         #[arg(long)]
         name: String,
         #[arg(long)]
         priority: Option<String>,
+        /// Milestone slug to group this task under
+        #[arg(long)]
+        milestone: Option<String>,
     },
-    /// List tasks
+    /// List tasks (filter by project or milestone)
     List {
+        /// Project slug or display name
         #[arg(long)]
         project: Option<String>,
+        /// Milestone slug to filter by
+        #[arg(long)]
+        milestone: Option<String>,
     },
     /// Mark a task as completed
     Done { slug: String },
@@ -223,9 +290,9 @@ pub enum EntityAction {
     },
     /// List all entities
     List,
-    /// Show a specific entity
+    /// Show a specific entity (accepts slug or display name)
     Get { slug: String },
-    /// Update an entity
+    /// Update an entity (accepts slug or display name)
     Update {
         slug: String,
         #[arg(long)]
@@ -246,7 +313,7 @@ pub enum GoalAction {
     },
     /// List all goals
     List,
-    /// Update a goal
+    /// Update a goal (accepts slug or display name)
     Update {
         slug: String,
         #[arg(long)]
@@ -318,6 +385,18 @@ pub enum DomainAction {
     },
 }
 
+/// Resolve a user identifier (slug, display name, or mixed) to a canonical slug.
+/// Prints error and returns None on failure.
+fn resolve(cwd: &std::path::Path, ns: &base::config::NamespaceConfig, entity_type: &str, input: &str) -> Option<String> {
+    match crud::resolve_slug(cwd, ns, entity_type, input) {
+        Ok(slug) => Some(slug),
+        Err(e) => {
+            eprintln!("{e}");
+            None
+        }
+    }
+}
+
 pub fn run() {
     let cli = Cli::parse();
     let cwd = std::env::current_dir().unwrap_or_default();
@@ -325,6 +404,23 @@ pub fn run() {
 
     match cli.command {
         Some(Commands::Hook { event }) => hook::dispatch(&event),
+
+        // ─── AST Query ──────────────────────────────────
+        Some(Commands::Ast { action }) => match action {
+            AstAction::Query { contains, file, calls, imports } => {
+                if let Some(name) = contains {
+                    let _ = crud::ast_query::contains(&cwd, &config.namespace, &name);
+                } else if let Some(path) = file {
+                    let _ = crud::ast_query::file(&cwd, &config.namespace, &path);
+                } else if let Some(name) = calls {
+                    let _ = crud::ast_query::calls(&cwd, &config.namespace, &name);
+                } else if let Some(path) = imports {
+                    let _ = crud::ast_query::imports(&cwd, &config.namespace, &path);
+                } else {
+                    eprintln!("Provide one of: --contains, --file, --calls, --imports");
+                }
+            }
+        },
 
         // ─── Project ─────────────────────────────────────
         Some(Commands::Project { action }) => match action {
@@ -335,24 +431,94 @@ pub fn run() {
                 }
             }
             ProjectAction::List => { let _ = crud::project::list(&cwd, &config.namespace); }
-            ProjectAction::Get { slug } => { let _ = crud::project::get(&cwd, &config.namespace, &slug); }
+            ProjectAction::Get { slug } => {
+                if let Some(s) = resolve(&cwd, &config.namespace, "project", &slug) {
+                    let _ = crud::project::get(&cwd, &config.namespace, &s);
+                }
+            }
             ProjectAction::Update { slug, status, blocked_by, next_action } => {
-                match crud::project::update(&cwd, &config.namespace, &slug, status.as_deref(), blocked_by.as_deref(), next_action.as_deref()) {
-                    Ok(()) => println!("Project '{slug}' updated"),
+                if let Some(s) = resolve(&cwd, &config.namespace, "project", &slug) {
+                    match crud::project::update(&cwd, &config.namespace, &s, status.as_deref(), blocked_by.as_deref(), next_action.as_deref()) {
+                        Ok(()) => println!("Project '{s}' updated"),
+                        Err(e) => eprintln!("Failed: {e}"),
+                    }
+                }
+            }
+        },
+
+        // ─── Milestone ──────────────────────────────────
+        Some(Commands::Milestone { action }) => match action {
+            MilestoneAction::Add { project, name, description } => {
+                let ps = match resolve(&cwd, &config.namespace, "project", &project) {
+                    Some(s) => s,
+                    None => return,
+                };
+                match crud::milestone::add(&cwd, &config.namespace, &ps, &name, description.as_deref()) {
+                    Ok(slug) => println!("Milestone '{name}' created (slug: {slug})"),
                     Err(e) => eprintln!("Failed: {e}"),
+                }
+            }
+            MilestoneAction::List { project } => {
+                let ps = match project.as_deref() {
+                    Some(p) => match resolve(&cwd, &config.namespace, "project", p) {
+                        Some(s) => Some(s),
+                        None => return,
+                    },
+                    None => None,
+                };
+                let _ = crud::milestone::list(&cwd, &config.namespace, ps.as_deref());
+            }
+            MilestoneAction::Get { slug } => {
+                if let Some(s) = resolve(&cwd, &config.namespace, "milestone", &slug) {
+                    let _ = crud::milestone::get(&cwd, &config.namespace, &s);
+                }
+            }
+            MilestoneAction::Update { slug, status, description } => {
+                if let Some(s) = resolve(&cwd, &config.namespace, "milestone", &slug) {
+                    match crud::milestone::update(&cwd, &config.namespace, &s, status.as_deref(), description.as_deref()) {
+                        Ok(()) => println!("Milestone '{s}' updated"),
+                        Err(e) => eprintln!("Failed: {e}"),
+                    }
                 }
             }
         },
 
         // ─── Task ────────────────────────────────────────
         Some(Commands::Task { action }) => match action {
-            TaskAction::Add { project, name, priority } => {
-                match crud::task::add(&cwd, &config.namespace, &project, &name, priority.as_deref()) {
+            TaskAction::Add { project, name, priority, milestone } => {
+                let ps = match resolve(&cwd, &config.namespace, "project", &project) {
+                    Some(s) => s,
+                    None => return,
+                };
+                let ms = match milestone.as_deref() {
+                    Some(m) => match resolve(&cwd, &config.namespace, "milestone", m) {
+                        Some(s) => Some(s),
+                        None => return,
+                    },
+                    None => None,
+                };
+                match crud::task::add(&cwd, &config.namespace, &ps, &name, priority.as_deref(), ms.as_deref()) {
                     Ok(slug) => println!("Task '{name}' created (slug: {slug})"),
                     Err(e) => eprintln!("Failed: {e}"),
                 }
             }
-            TaskAction::List { project } => { let _ = crud::task::list(&cwd, &config.namespace, project.as_deref()); }
+            TaskAction::List { project, milestone } => {
+                let ps = match project.as_deref() {
+                    Some(p) => match resolve(&cwd, &config.namespace, "project", p) {
+                        Some(s) => Some(s),
+                        None => return,
+                    },
+                    None => None,
+                };
+                let ms = match milestone.as_deref() {
+                    Some(m) => match resolve(&cwd, &config.namespace, "milestone", m) {
+                        Some(s) => Some(s),
+                        None => return,
+                    },
+                    None => None,
+                };
+                let _ = crud::task::list(&cwd, &config.namespace, ps.as_deref(), ms.as_deref());
+            }
             TaskAction::Done { slug } => {
                 match crud::task::done(&cwd, &config.namespace, &slug) {
                     Ok(()) => println!("Task '{slug}' completed"),
@@ -381,11 +547,17 @@ pub fn run() {
                 }
             }
             EntityAction::List => { let _ = crud::entity::list(&cwd, &config.namespace); }
-            EntityAction::Get { slug } => { let _ = crud::entity::get(&cwd, &config.namespace, &slug); }
+            EntityAction::Get { slug } => {
+                if let Some(s) = resolve(&cwd, &config.namespace, "entity", &slug) {
+                    let _ = crud::entity::get(&cwd, &config.namespace, &s);
+                }
+            }
             EntityAction::Update { slug, status, description } => {
-                match crud::entity::update(&cwd, &config.namespace, &slug, status.as_deref(), description.as_deref()) {
-                    Ok(()) => println!("Entity '{slug}' updated"),
-                    Err(e) => eprintln!("Failed: {e}"),
+                if let Some(s) = resolve(&cwd, &config.namespace, "entity", &slug) {
+                    match crud::entity::update(&cwd, &config.namespace, &s, status.as_deref(), description.as_deref()) {
+                        Ok(()) => println!("Entity '{s}' updated"),
+                        Err(e) => eprintln!("Failed: {e}"),
+                    }
                 }
             }
         },
@@ -400,9 +572,11 @@ pub fn run() {
             }
             GoalAction::List => { let _ = crud::goal::list(&cwd, &config.namespace); }
             GoalAction::Update { slug, status, target } => {
-                match crud::goal::update(&cwd, &config.namespace, &slug, status.as_deref(), target.as_deref()) {
-                    Ok(()) => println!("Goal '{slug}' updated"),
-                    Err(e) => eprintln!("Failed: {e}"),
+                if let Some(s) = resolve(&cwd, &config.namespace, "goal", &slug) {
+                    match crud::goal::update(&cwd, &config.namespace, &s, status.as_deref(), target.as_deref()) {
+                        Ok(()) => println!("Goal '{s}' updated"),
+                        Err(e) => eprintln!("Failed: {e}"),
+                    }
                 }
             }
         },
@@ -450,22 +624,49 @@ pub fn run() {
                     return;
                 }
 
-                let graph_path = base::config::find_workspace_base(&cwd)
-                    .map(|b| b.join("graph.trig"))
-                    .unwrap_or_else(|| cwd.join(".base/graph.trig"));
+                let base_dir = base::config::find_workspace_base(&cwd)
+                    .unwrap_or_else(|| cwd.join(".base"));
+                let graph_path = base_dir.join("graph.trig");
+                let ast_ttl = base_dir.join("ast.ttl");
 
                 println!("AST extraction: {} → {}", target_dir, graph_path.display());
                 let status = std::process::Command::new("python3")
                     .arg(&ast_script)
                     .arg(target_dir)
-                    .arg("--output")
-                    .arg(&graph_path)
-                    .arg("--format")
-                    .arg("trig")
+                    .arg("--full")
+                    .arg("--out")
+                    .arg(&ast_ttl)
                     .status();
 
                 match status {
-                    Ok(s) if s.success() => println!("AST extraction complete"),
+                    Ok(s) if s.success() => {
+                        // Append AST TTL into graph.trig under a named graph
+                        match std::fs::read_to_string(&ast_ttl) {
+                            Ok(ttl_content) => {
+                                let mut graph_content = std::fs::read_to_string(&graph_path)
+                                    .unwrap_or_default();
+                                // Remove previous AST block if present
+                                if let Some(start) = graph_content.find("\n# --- AST BEGIN ---") {
+                                    if let Some(end) = graph_content.find("\n# --- AST END ---") {
+                                        graph_content = format!(
+                                            "{}{}",
+                                            &graph_content[..start],
+                                            &graph_content[end + "\n# --- AST END ---".len()..]
+                                        );
+                                    }
+                                }
+                                // Append new AST block
+                                graph_content.push_str("\n# --- AST BEGIN ---\n");
+                                graph_content.push_str(&ttl_content);
+                                graph_content.push_str("\n# --- AST END ---\n");
+                                match std::fs::write(&graph_path, graph_content) {
+                                    Ok(()) => println!("AST extraction complete — merged into graph.trig"),
+                                    Err(e) => eprintln!("Failed to write graph.trig: {e}"),
+                                }
+                            }
+                            Err(e) => eprintln!("Failed to read AST output: {e}"),
+                        }
+                    }
                     Ok(s) => eprintln!("AST extraction exited with code {:?}", s.code()),
                     Err(e) => eprintln!("Failed to run AST extractor: {e}"),
                 }

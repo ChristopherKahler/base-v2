@@ -23,7 +23,7 @@ fn seed_workspace(dir: &std::path::Path) {
     crud::project::update(dir, &ns, "blocked-project", Some("blocked"), Some("waiting on API"), None).unwrap();
 
     // Active task
-    crud::task::add(dir, &ns, "active-project", "Fix Auth", Some("high")).unwrap();
+    crud::task::add(dir, &ns, "active-project", "Fix Auth", Some("high"), None).unwrap();
 
     // Old project (stale) — we'll set lastActive to 30 days ago via direct SPARQL
     crud::project::add(dir, &ns, "Stale Project", "active", None).unwrap();

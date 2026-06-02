@@ -16,7 +16,7 @@ fn add_task_linked_to_project() {
     crud::project::add(tmp.path(), &ns, "MyProject", "active", None).unwrap();
 
     // Add task
-    let slug = crud::task::add(tmp.path(), &ns, "myproject", "Fix Auth", Some("high")).unwrap();
+    let slug = crud::task::add(tmp.path(), &ns, "myproject", "Fix Auth", Some("high"), None).unwrap();
     assert_eq!(slug, "myproject.fix-auth");
 
     // Verify task exists and is linked to project
@@ -47,10 +47,10 @@ fn list_tasks_by_project() {
     let ns = default_ns();
 
     crud::project::add(tmp.path(), &ns, "Proj", "active", None).unwrap();
-    crud::task::add(tmp.path(), &ns, "proj", "Task A", None).unwrap();
-    crud::task::add(tmp.path(), &ns, "proj", "Task B", None).unwrap();
+    crud::task::add(tmp.path(), &ns, "proj", "Task A", None, None).unwrap();
+    crud::task::add(tmp.path(), &ns, "proj", "Task B", None, None).unwrap();
 
-    let result = crud::task::list(tmp.path(), &ns, Some("proj"));
+    let result = crud::task::list(tmp.path(), &ns, Some("proj"), None);
     assert!(result.is_ok());
 }
 
@@ -60,7 +60,7 @@ fn mark_task_done() {
     let ns = default_ns();
 
     crud::project::add(tmp.path(), &ns, "Proj", "active", None).unwrap();
-    crud::task::add(tmp.path(), &ns, "proj", "DoThis", None).unwrap();
+    crud::task::add(tmp.path(), &ns, "proj", "DoThis", None, None).unwrap();
     crud::task::done(tmp.path(), &ns, "proj.dothis").unwrap();
 
     // Verify status is completed
@@ -97,7 +97,7 @@ fn add_task_default_priority() {
     let ns = default_ns();
 
     crud::project::add(tmp.path(), &ns, "Proj", "active", None).unwrap();
-    crud::task::add(tmp.path(), &ns, "proj", "NoPri", None).unwrap();
+    crud::task::add(tmp.path(), &ns, "proj", "NoPri", None, None).unwrap();
 
     let trig_path = tmp.path().join(".base").join("graph.trig");
     let store = base::store::load_graph(&trig_path).unwrap();

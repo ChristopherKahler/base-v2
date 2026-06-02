@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::path::Path;
@@ -40,6 +40,9 @@ pub struct SessionState {
     /// Number of user prompts in this session (for bracket calculation)
     #[serde(default)]
     pub prompt_count: u32,
+    /// Files whose AST map has been injected this session (dedup)
+    #[serde(default)]
+    pub ast_injected: HashSet<String>,
 }
 
 impl SessionState {
@@ -112,6 +115,16 @@ impl SessionState {
     /// Clear all dedup state (used for force-refresh).
     pub fn clear_dedup(&mut self) {
         self.injected.clear();
+    }
+
+    /// Check if AST map was already injected for this file this session.
+    pub fn has_ast_injected(&self, file_path: &str) -> bool {
+        self.ast_injected.contains(file_path)
+    }
+
+    /// Mark a file's AST map as injected this session.
+    pub fn mark_ast_injected(&mut self, file_path: &str) {
+        self.ast_injected.insert(file_path.to_string());
     }
 }
 

@@ -19,23 +19,33 @@ pub struct SyncStats {
 
 /// Sync domains.toml domains/rules into the graph as ops:Domain and ops:Rule entities.
 /// Optionally migrates decisions from a carl.json file.
-/// Idempotent: deletes existing domain/rule triples before re-inserting.
+/// Loads all domains (global + workspace) via `load_domains`.
 pub fn sync_domains_to_graph(
     config: &BaseConfig,
     cwd: &Path,
     carl_json_path: Option<&Path>,
 ) -> Result<SyncStats> {
-    let ns = &config.namespace;
+    let domains = domain::load_domains(cwd);
+    sync_domain_list(&config.namespace, cwd, &domains, carl_json_path)
+}
+
+/// Sync a specific list of domains into the graph.
+/// Core implementation — separated for test isolation (avoids global config leakage).
+fn sync_domain_list(
+    ns: &NamespaceConfig,
+    cwd: &Path,
+    domains: &[domain::DomainDef],
+    carl_json_path: Option<&Path>,
+) -> Result<SyncStats> {
     let (store, trig_path) = crud::load_workspace_store(cwd)?;
     let ws_slug = crud::workspace_slug(cwd);
     let graph = crud::workspace_graph_iri(ns, &ws_slug);
     let pfx = crud::prefixes(ns);
     let p = &ns.prefix;
 
-    let domains = domain::load_domains(cwd);
     let mut total_rules = 0usize;
 
-    for domain_def in &domains {
+    for domain_def in domains {
         let domain_slug = crud::slugify(&domain_def.name);
         let domain_iri = crud::build_iri(ns, "domain", &domain_slug);
 
@@ -230,12 +240,20 @@ mod tests {
     use super::*;
     use crate::config::BaseConfig;
 
-    fn setup_workspace(dir: &Path) {
-        let base_dir = dir.join(".base");
-        std::fs::create_dir_all(&base_dir).unwrap();
-        std::fs::write(
-            base_dir.join("domains.toml"),
-            r#"
+    /// Parse domains directly from a TOML string — bypasses global config for test isolation.
+    fn parse_domains(toml_content: &str) -> Vec<domain::DomainDef> {
+        #[derive(Deserialize)]
+        struct DomainsFile {
+            #[serde(default)]
+            domain: Vec<domain::DomainDef>,
+        }
+        toml::from_str::<DomainsFile>(toml_content)
+            .unwrap()
+            .domain
+    }
+
+    fn standard_domains_toml() -> &'static str {
+        r#"
 [[domain]]
 name = "GLOBAL"
 mode = "always"
@@ -249,9 +267,13 @@ prompt_keywords = ["write code", "fix bug"]
 file_keywords = ["use crate", "impl"]
 paths = ["src/"]
 rules = ["Dev rule: test everything"]
-"#,
-        )
-        .unwrap();
+"#
+    }
+
+    fn setup_workspace(dir: &Path) {
+        let base_dir = dir.join(".base");
+        std::fs::create_dir_all(&base_dir).unwrap();
+        std::fs::write(base_dir.join("domains.toml"), standard_domains_toml()).unwrap();
     }
 
     #[test]
@@ -260,7 +282,8 @@ rules = ["Dev rule: test everything"]
         setup_workspace(tmp.path());
         let config = BaseConfig::load(tmp.path());
 
-        let stats = sync_domains_to_graph(&config, tmp.path(), None).unwrap();
+        let domains = parse_domains(standard_domains_toml());
+        let stats = sync_domain_list(&config.namespace, tmp.path(), &domains, None).unwrap();
         assert_eq!(stats.domains, 2);
         assert_eq!(stats.rules, 3); // 2 GLOBAL + 1 DEVELOPMENT
 
@@ -292,7 +315,8 @@ rules = ["Dev rule: test everything"]
         setup_workspace(tmp.path());
         let config = BaseConfig::load(tmp.path());
 
-        sync_domains_to_graph(&config, tmp.path(), None).unwrap();
+        let domains = parse_domains(standard_domains_toml());
+        sync_domain_list(&config.namespace, tmp.path(), &domains, None).unwrap();
 
         let ns = &config.namespace;
         let p = &ns.prefix;
@@ -326,9 +350,11 @@ rules = ["Dev rule: test everything"]
         setup_workspace(tmp.path());
         let config = BaseConfig::load(tmp.path());
 
+        let domains = parse_domains(standard_domains_toml());
+
         // Sync twice
-        sync_domains_to_graph(&config, tmp.path(), None).unwrap();
-        let stats = sync_domains_to_graph(&config, tmp.path(), None).unwrap();
+        sync_domain_list(&config.namespace, tmp.path(), &domains, None).unwrap();
+        let stats = sync_domain_list(&config.namespace, tmp.path(), &domains, None).unwrap();
         assert_eq!(stats.domains, 2);
         assert_eq!(stats.rules, 3);
 
@@ -376,7 +402,8 @@ rules = ["Dev rule: test everything"]
         .unwrap();
 
         let config = BaseConfig::load(tmp.path());
-        let stats = sync_domains_to_graph(&config, tmp.path(), Some(&carl_path)).unwrap();
+        let domains = parse_domains(standard_domains_toml());
+        let stats = sync_domain_list(&config.namespace, tmp.path(), &domains, Some(&carl_path)).unwrap();
         assert_eq!(stats.decisions, 1);
 
         // Verify decision linked to domain
@@ -411,20 +438,18 @@ rules = ["Dev rule: test everything"]
         let base_dir = tmp.path().join(".base");
         std::fs::create_dir_all(&base_dir).unwrap();
         // Legacy format: `keywords` instead of `prompt_keywords`
-        std::fs::write(
-            base_dir.join("domains.toml"),
-            r#"
+        let legacy_toml = r#"
 [[domain]]
 name = "LEGACY"
 mode = "triggered"
 keywords = ["old keyword"]
 rules = ["Legacy rule"]
-"#,
-        )
-        .unwrap();
+"#;
+        std::fs::write(base_dir.join("domains.toml"), legacy_toml).unwrap();
 
         let config = BaseConfig::load(tmp.path());
-        let stats = sync_domains_to_graph(&config, tmp.path(), None).unwrap();
+        let domains = parse_domains(legacy_toml);
+        let stats = sync_domain_list(&config.namespace, tmp.path(), &domains, None).unwrap();
         assert_eq!(stats.domains, 1);
         assert_eq!(stats.rules, 1);
 

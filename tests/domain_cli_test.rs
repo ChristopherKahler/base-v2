@@ -87,6 +87,7 @@ fn add_trigger_creates_base_dir_if_missing() {
     base::domain::add_trigger(tmp.path(), "new-domain", Some("test"), None).unwrap();
 
     let domains = base::domain::load_domains(tmp.path());
-    assert_eq!(domains.len(), 1);
-    assert_eq!(domains[0].name, "new-domain");
+    let new = domains.iter().find(|d| d.name == "new-domain");
+    assert!(new.is_some(), "new-domain should exist in loaded domains");
+    assert_eq!(new.unwrap().prompt_keywords, vec!["test"]);
 }

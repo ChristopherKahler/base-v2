@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """AST-to-ontology extraction — parse source files via tree-sitter, emit TTL triples.
 
-Uses the full graphify-derived extraction engine (extractor.py) for 35+ language
-support, then serializes to Turtle via ttl_serializer.py for loading into Oxigraph.
+Uses tree-sitter-based extraction (extractor.py) for 35+ language support,
+then serializes to Turtle via ttl_serializer.py for loading into the BASE graph.
 """
 
 import argparse
@@ -68,7 +68,15 @@ def extract_project(target: Path, project: str, full: bool = False, confirm: boo
 
     if full:
         result = extract(files, cache_root=target)
-        return serialize(result, project, str(target), "multi")
+        # Build file map: bare filename → relative path (for sourceFile resolution)
+        file_map = {}
+        for f in files:
+            try:
+                rel = str(f.relative_to(target))
+            except ValueError:
+                rel = f.name
+            file_map[f.name] = rel
+        return serialize(result, project, str(target), "multi", file_map=file_map)
 
     chunks = []
     for file_path in files:

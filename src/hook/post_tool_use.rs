@@ -4,6 +4,7 @@ use anyhow::Result;
 use chrono::Local;
 
 use crate::config::BaseConfig;
+use crate::crud;
 use crate::store;
 
 pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Result<()> {
@@ -12,44 +13,84 @@ pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Res
         return Ok(());
     }
 
+    // ─── lastActive timestamp update (existing behavior) ─────
     let trig_path = find_workspace_trig(cwd);
-    let Some(trig_path) = trig_path else {
-        return Ok(()); // No workspace graph yet — nothing to update
-    };
+    if let Some(ref tp) = trig_path {
+        let graph = store::load_graph(tp)?;
+        let now = Local::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, false);
+        let mut updated = false;
 
-    let graph = store::load_graph(&trig_path)?;
-    let now = Local::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, false);
-    let mut updated = false;
+        for file_path in &file_paths {
+            let sparql = format!(
+                "PREFIX {p}: <{u}>\n\
+                 PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>\n\
+                 DELETE {{ GRAPH ?g {{ ?entity {p}:lastActive ?old }} }}\n\
+                 INSERT {{ GRAPH ?g {{ ?entity {p}:lastActive \"{now}\"^^xsd:dateTime }} }}\n\
+                 WHERE {{\n\
+                   GRAPH ?g {{\n\
+                     ?entity {p}:path ?path .\n\
+                     FILTER(STRSTARTS(\"{file}\", STR(?path)))\n\
+                     OPTIONAL {{ ?entity {p}:lastActive ?old }}\n\
+                   }}\n\
+                 }}",
+                p = config.namespace.prefix,
+                u = config.namespace.uri,
+                file = file_path.display(),
+            );
 
-    for file_path in &file_paths {
-        let sparql = format!(
-            "PREFIX {p}: <{u}>\n\
-             PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>\n\
-             DELETE {{ GRAPH ?g {{ ?entity {p}:lastActive ?old }} }}\n\
-             INSERT {{ GRAPH ?g {{ ?entity {p}:lastActive \"{now}\"^^xsd:dateTime }} }}\n\
-             WHERE {{\n\
-               GRAPH ?g {{\n\
-                 ?entity {p}:path ?path .\n\
-                 FILTER(STRSTARTS(\"{file}\", STR(?path)))\n\
-                 OPTIONAL {{ ?entity {p}:lastActive ?old }}\n\
-               }}\n\
-             }}",
-            p = config.namespace.prefix,
-            u = config.namespace.uri,
-            file = file_path.display(),
-        );
+            if graph.update(&sparql).is_ok() {
+                updated = true;
+            }
+        }
 
-        if graph.update(&sparql).is_ok() {
-            updated = true;
+        if updated {
+            store::write_back(&graph, tp)?;
         }
     }
 
-    if updated {
-        store::write_back(&graph, &trig_path)?;
+    // ─── AST section context for partial reads ──────────────
+    let tool_name = event
+        .get("tool_name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+
+    if tool_name == "Read" {
+        if let (Some(offset), Some(limit)) = (extract_offset(event), extract_limit(event)) {
+            // Partial read — inject section-specific AST entities
+            for fp in &file_paths {
+                if let Some(fp_str) = fp.to_str() {
+                    if is_source_file(fp_str) {
+                        if let Some(section) =
+                            crud::ast_query::section_entities(cwd, &config.namespace, fp_str, offset, limit)
+                        {
+                            print!("{}", section.trim_end());
+                        }
+                    }
+                }
+            }
+        }
     }
 
-    // post-tool-use never emits to stdout — it only mutates the graph
     Ok(())
+}
+
+fn is_source_file(path: &str) -> bool {
+    let exts = [".rs", ".py", ".js", ".ts", ".go", ".jsx", ".tsx", ".c", ".cpp", ".h", ".java", ".rb", ".swift"];
+    exts.iter().any(|ext| path.ends_with(ext))
+}
+
+fn extract_offset(event: &serde_json::Value) -> Option<u64> {
+    event
+        .get("tool_input")
+        .and_then(|ti| ti.get("offset"))
+        .and_then(|v| v.as_u64())
+}
+
+fn extract_limit(event: &serde_json::Value) -> Option<u64> {
+    event
+        .get("tool_input")
+        .and_then(|ti| ti.get("limit"))
+        .and_then(|v| v.as_u64())
 }
 
 /// Extract file paths from the hook event JSON.

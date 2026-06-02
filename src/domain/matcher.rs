@@ -1,43 +1,73 @@
 use crate::domain::session::{rules_hash, SessionState};
 use crate::domain::DomainDef;
 
+/// Why a domain matched. Only tracked when DEVMODE is on.
+#[derive(Debug, Clone, PartialEq)]
+pub enum MatchReason {
+    Always,
+    Keyword,
+    Filepath,
+    KeywordAndFilepath,
+}
+
+impl std::fmt::Display for MatchReason {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Always => write!(f, "always"),
+            Self::Keyword => write!(f, "keyword"),
+            Self::Filepath => write!(f, "filepath"),
+            Self::KeywordAndFilepath => write!(f, "keyword + filepath"),
+        }
+    }
+}
+
+/// A matched domain paired with why it matched.
+#[derive(Debug)]
+pub struct DomainMatch<'a> {
+    pub domain: &'a DomainDef,
+    pub reason: MatchReason,
+}
+
 /// Match domains against prompt text and active file paths.
-/// Returns domains that should be injected (not yet injected, or rules changed).
+/// Returns domains that should be injected (not yet injected, or rules changed),
+/// along with the reason each matched.
 pub fn match_domains<'a>(
     prompt: &str,
     domains: &'a [DomainDef],
     session: &SessionState,
     active_paths: &[String],
-) -> Vec<&'a DomainDef> {
+) -> Vec<DomainMatch<'a>> {
     let prompt_lower = prompt.to_lowercase();
 
     domains
         .iter()
-        .filter(|d| {
+        .filter_map(|d| {
             // Check if domain should be matched
-            let matched = is_matched(d, &prompt_lower, active_paths);
-            if !matched {
-                return false;
-            }
+            let reason = is_matched(d, &prompt_lower, active_paths)?;
 
             // Check dedup: skip if already injected with same rules hash
             let hash = rules_hash(&d.rules);
-            !session.is_injected(&d.name, hash)
+            if session.is_injected(&d.name, hash) {
+                return None;
+            }
+
+            Some(DomainMatch { domain: d, reason })
         })
         .collect()
 }
 
 /// Determine if a domain matches the current context.
-fn is_matched(domain: &DomainDef, prompt_lower: &str, active_paths: &[String]) -> bool {
+/// Returns Some(reason) on match, None on no match.
+fn is_matched(domain: &DomainDef, prompt_lower: &str, active_paths: &[String]) -> Option<MatchReason> {
     // Always-on domains always match
     if domain.is_always() {
-        return true;
+        return Some(MatchReason::Always);
     }
 
     // Check exclude patterns first — any match vetoes the domain
     for pattern in &domain.exclude {
         if prompt_lower.contains(&pattern.to_lowercase()) {
-            return false;
+            return None;
         }
     }
 
@@ -54,7 +84,12 @@ fn is_matched(domain: &DomainDef, prompt_lower: &str, active_paths: &[String]) -
             .any(|ap| ap.starts_with(dp) || ap.contains(dp))
     });
 
-    keyword_hit || path_hit
+    match (keyword_hit, path_hit) {
+        (true, true) => Some(MatchReason::KeywordAndFilepath),
+        (true, false) => Some(MatchReason::Keyword),
+        (false, true) => Some(MatchReason::Filepath),
+        (false, false) => None,
+    }
 }
 
 #[cfg(test)]
@@ -80,7 +115,8 @@ mod tests {
         let session = SessionState::default();
         let matched = match_domains("anything", &domains, &session, &[]);
         assert_eq!(matched.len(), 1);
-        assert_eq!(matched[0].name, "global");
+        assert_eq!(matched[0].domain.name, "global");
+        assert_eq!(matched[0].reason, MatchReason::Always);
     }
 
     #[test]
@@ -90,6 +126,7 @@ mod tests {
 
         let matched = match_domains("please fix bug in auth", &domains, &session, &[]);
         assert_eq!(matched.len(), 1);
+        assert_eq!(matched[0].reason, MatchReason::Keyword);
 
         let matched = match_domains("check my calendar", &domains, &session, &[]);
         assert!(matched.is_empty());
@@ -117,6 +154,24 @@ mod tests {
             &["src/main.rs".into()],
         );
         assert_eq!(matched.len(), 1);
+        assert_eq!(matched[0].reason, MatchReason::Filepath);
+    }
+
+    #[test]
+    fn both_keyword_and_path() {
+        let mut domain = make_domain("dev", "triggered", &["code"], &["Rule"]);
+        domain.paths = vec!["src/".into()];
+        let domains = vec![domain];
+        let session = SessionState::default();
+
+        let matched = match_domains(
+            "write code",
+            &domains,
+            &session,
+            &["src/main.rs".into()],
+        );
+        assert_eq!(matched.len(), 1);
+        assert_eq!(matched[0].reason, MatchReason::KeywordAndFilepath);
     }
 
     #[test]
@@ -168,6 +223,6 @@ mod tests {
         let session = SessionState::default();
         let matched = match_domains("anything", &domains, &session, &[]);
         assert_eq!(matched.len(), 1);
-        assert!(matched[0].rules.is_empty());
+        assert!(matched[0].domain.rules.is_empty());
     }
 }

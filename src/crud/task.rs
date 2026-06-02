@@ -12,6 +12,7 @@ pub fn add(
     project_slug: &str,
     name: &str,
     priority: Option<&str>,
+    milestone_slug: Option<&str>,
 ) -> Result<String> {
     let task_slug_part = crud::slugify(name);
     let slug = format!("{project_slug}.{task_slug_part}");
@@ -23,6 +24,14 @@ pub fn add(
     let p = &ns.prefix;
     let pri = priority.unwrap_or("medium");
 
+    // Build milestone edge if provided
+    let milestone_edge = if let Some(ms) = milestone_slug {
+        let ms_iri = crud::build_iri(ns, "milestone", ms);
+        format!("<{ms_iri}> {p}:hasTask <{task_iri}> .\n")
+    } else {
+        String::new()
+    };
+
     let sparql = format!(
         "INSERT DATA {{\n\
            GRAPH <{graph}> {{\n\
@@ -33,6 +42,7 @@ pub fn add(
                {p}:createdAt \"{now}\"^^xsd:dateTime ;\n\
                {p}:lastActive \"{now}\"^^xsd:dateTime .\n\
              <{project_iri}> {p}:hasTask <{task_iri}> .\n\
+             {milestone_edge}\
            }}\n\
          }}"
     );
@@ -41,9 +51,24 @@ pub fn add(
     Ok(slug)
 }
 
-pub fn list(cwd: &Path, ns: &NamespaceConfig, project_slug: Option<&str>) -> Result<()> {
+pub fn list(cwd: &Path, ns: &NamespaceConfig, project_slug: Option<&str>, milestone_slug: Option<&str>) -> Result<()> {
     let p = &ns.prefix;
-    let sparql = if let Some(ps) = project_slug {
+    let sparql = if let Some(ms) = milestone_slug {
+        // Filter by milestone
+        let ms_iri = crud::build_iri(ns, "milestone", ms);
+        format!(
+            "SELECT ?name ?status ?priority WHERE {{\n\
+               GRAPH ?g {{\n\
+                 <{ms_iri}> {p}:hasTask ?task .\n\
+                 ?task {p}:name ?name ;\n\
+                   {p}:status ?status .\n\
+                 OPTIONAL {{ ?task {p}:priority ?priority }}\n\
+               }}\n\
+             }}\n\
+             ORDER BY ?name"
+        )
+    } else if let Some(ps) = project_slug {
+        // Filter by project
         let project_iri = crud::build_iri(ns, "project", ps);
         format!(
             "SELECT ?name ?status ?priority WHERE {{\n\
@@ -57,6 +82,7 @@ pub fn list(cwd: &Path, ns: &NamespaceConfig, project_slug: Option<&str>) -> Res
              ORDER BY ?name"
         )
     } else {
+        // All tasks
         format!(
             "SELECT ?name ?status ?priority WHERE {{\n\
                GRAPH ?g {{\n\

@@ -1,6 +1,8 @@
+pub mod ast_query;
 pub mod decision;
 pub mod entity;
 pub mod goal;
+pub mod milestone;
 pub mod note;
 pub mod project;
 pub mod rule;
@@ -140,6 +142,73 @@ pub fn load_and_query(cwd: &Path, ns: &NamespaceConfig, sparql: &str) -> Result<
     let store = crate::store::load_graph(&trig_path)?;
     let full_sparql = format!("{}\n{}", prefixes(ns), sparql);
     crate::store::query(&store, &full_sparql)
+}
+
+// ─── Name resolution ────────────────────────────────────────
+
+/// Capitalize the first character of a string (for RDF class names).
+fn capitalize_first(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        None => String::new(),
+        Some(c) => c.to_uppercase().to_string() + chars.as_str(),
+    }
+}
+
+/// Resolve a user-provided identifier (slug, display name, or mixed case) to a canonical slug.
+/// Tries: 1) exact match as slug, 2) slugify the input, 3) SPARQL lookup by display name.
+/// Loads the graph once and runs all checks against it.
+pub fn resolve_slug(cwd: &Path, ns: &NamespaceConfig, entity_type: &str, input: &str) -> Result<String> {
+    let base_dir = crate::config::find_workspace_base(cwd)
+        .context("no .base/ directory found")?;
+    let trig_path = base_dir.join("graph.trig");
+    let store = crate::store::load_graph(&trig_path)?;
+    let pfx = prefixes(ns);
+    let p = &ns.prefix;
+    let type_name = capitalize_first(entity_type);
+
+    // Try 1: Input as-is is already a valid slug (skip if contains spaces — invalid IRI)
+    if !input.contains(' ') {
+        let iri = build_iri(ns, entity_type, input);
+        let ask = format!("{pfx}\nASK WHERE {{ GRAPH ?g {{ <{iri}> a {p}:{type_name} }} }}");
+        if let Ok(QueryResults::Boolean(true)) = crate::store::query(&store, &ask) {
+            return Ok(input.to_string());
+        }
+    }
+
+    // Try 2: Slugify the input and check
+    let slugified = slugify(input);
+    if slugified != input {
+        let iri2 = build_iri(ns, entity_type, &slugified);
+        let ask2 = format!("{pfx}\nASK WHERE {{ GRAPH ?g {{ <{iri2}> a {p}:{type_name} }} }}");
+        if let Ok(QueryResults::Boolean(true)) = crate::store::query(&store, &ask2) {
+            return Ok(slugified);
+        }
+    }
+
+    // Try 3: Name lookup (case-insensitive)
+    let escaped = input.replace('"', "\\\"");
+    let sel = format!(
+        "{pfx}\nSELECT ?iri WHERE {{\n\
+           GRAPH ?g {{\n\
+             ?iri a {p}:{type_name} ;\n\
+               {p}:name ?name .\n\
+             FILTER(LCASE(?name) = LCASE(\"{escaped}\"))\n\
+           }}\n\
+         }} LIMIT 1"
+    );
+    if let QueryResults::Solutions(solutions) = crate::store::query(&store, &sel)? {
+        for row in solutions.filter_map(|r| r.ok()) {
+            if let Some(term) = row.get("iri") {
+                let display = term_display(term.into());
+                return Ok(display);
+            }
+        }
+    }
+
+    anyhow::bail!(
+        "No {entity_type} found matching '{input}'. Try the slug (e.g., 'my-project') or display name (e.g., 'My Project')."
+    )
 }
 
 // ─── Display helpers ─────────────────────────────────────────
