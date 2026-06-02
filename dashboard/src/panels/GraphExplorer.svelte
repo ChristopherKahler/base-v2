@@ -1,7 +1,7 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
   import * as d3 from 'd3';
-  import { getNodes, getEdges, getNodeDetail, addNote, updateNote, deleteNote } from '../lib/api.js';
+  import { getNodes, getEdges, getNodeDetail, addNote, updateNote, deleteNote, reloadGraph, createEntity, exportGraphJson } from '../lib/api.js';
 
   let container;
   let nodes = [];
@@ -19,6 +19,26 @@
   let submittingNote = false;
   let editingNoteIndex = null;
   let editingNoteText = '';
+  let showEntityForm = false;
+  let newEntityName = '';
+  let newEntityType = 'Entity';
+  let newEntityDomain = '';
+  let reloading = false;
+
+  async function doReload() {
+    reloading = true;
+    await reloadGraph();
+    await refreshGraph();
+    reloading = false;
+  }
+
+  async function doCreateEntity() {
+    if (!newEntityName.trim()) return;
+    await createEntity(newEntityName, newEntityType, newEntityDomain || undefined);
+    newEntityName = '';
+    showEntityForm = false;
+    await refreshGraph();
+  }
 
   async function refreshGraph() {
     const [n, e] = await Promise.all([getNodes(), getEdges()]);
@@ -411,6 +431,9 @@
       <span class="stat"><strong>{edges.length}</strong>&nbsp;edges</span>
     </div>
     <div style="display: flex; gap: var(--sp-xxs);">
+      <button class="graph-btn" on:click={doReload} title="Reload graph from disk" disabled={reloading}>↻ {reloading ? '...' : 'Reload'}</button>
+      <button class="graph-btn" on:click={() => showEntityForm = !showEntityForm} title="Create entity">+ Entity</button>
+      <button class="graph-btn" on:click={exportGraphJson} title="Export graph JSON">↓ JSON</button>
       <button class="graph-btn" on:click={tighten} title="Tighten layout &amp; re-center">⊛ Align</button>
       <button class="graph-btn" on:click={recenter} title="Zoom to fit all nodes">◎ Fit</button>
     </div>
@@ -452,6 +475,18 @@
         </button>
       {/each}
     </div>
+
+    {#if showEntityForm}
+      <div class="entity-form">
+        <input bind:value={newEntityName} placeholder="Entity name" class="form-input" />
+        <select bind:value={newEntityType} class="form-select">
+          <option>Entity</option><option>Person</option><option>Tool</option><option>Service</option>
+        </select>
+        <input bind:value={newEntityDomain} placeholder="Domain (optional)" class="form-input" style="width: 120px" />
+        <button class="graph-btn" on:click={doCreateEntity} disabled={!newEntityName.trim()}>Create</button>
+        <button class="graph-btn" on:click={() => showEntityForm = false}>Cancel</button>
+      </div>
+    {/if}
 
     <div class="graph-container" bind:this={container}>
       {#if selectedNode && nodeDetail}
@@ -555,3 +590,41 @@
     </div>
   {/if}
 </div>
+
+<style>
+  .entity-form {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 24px;
+    background: var(--surface-02);
+    border-bottom: 1px solid var(--border);
+  }
+  .form-input {
+    background: var(--surface-03);
+    border: 1px solid var(--border);
+    color: var(--ink-primary);
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    width: 160px;
+  }
+  .form-select {
+    background: var(--surface-03);
+    border: 1px solid var(--border);
+    color: var(--ink-primary);
+    padding: 4px 6px;
+    border-radius: 4px;
+    font-size: 12px;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%2368686A'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 6px center;
+    padding-right: 20px;
+  }
+  .form-select option {
+    background: #15171C;
+    color: #ffffff;
+  }
+</style>

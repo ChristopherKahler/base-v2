@@ -1,6 +1,6 @@
 <script>
   import { onMount } from 'svelte';
-  import { getUsageSummary, getUsageSessions } from '../lib/api.js';
+  import { getUsageSummary, getUsageSessions, exportUsageCsv } from '../lib/api.js';
   import * as d3 from 'd3';
 
   let summary = null;
@@ -8,6 +8,49 @@
   let loading = true;
   let chartEl;
   let sortCol = 'started';
+  let days = 30;
+  let selectedModel = ''; // empty = all models
+
+  async function loadData() {
+    loading = true;
+    const [s, sess] = await Promise.all([getUsageSummary(days), getUsageSessions(days)]);
+    summary = s;
+    sessions = sess;
+    loading = false;
+    setTimeout(() => {
+      if (summary && summary.daily) drawChart(summary.daily);
+    }, 50);
+  }
+
+  async function setDays(d) {
+    days = d;
+    await loadData();
+  }
+
+  function toggleModel(name) {
+    selectedModel = selectedModel === name ? '' : name;
+  }
+
+  // Filter sessions by selected model
+  $: filteredSessions = selectedModel
+    ? sessions.filter(s => s.model === selectedModel)
+    : sessions;
+
+  // Recompute stats when model filter changes
+  $: filteredStats = (() => {
+    if (!selectedModel || !summary) return null;
+    const m = summary.models[selectedModel];
+    if (!m) return null;
+    return {
+      input: m.input,
+      output: m.output,
+      cost: m.cost,
+      count: m.count,
+      cacheRead: m.cache_read,
+      cacheWrite: m.cache_write,
+    };
+  })();
+
   let sortDir = -1;
 
   function fmt(n) {
@@ -49,7 +92,7 @@
     else { sortCol = col; sortDir = -1; }
   }
 
-  $: sortedSessions = [...sessions].sort((a, b) => {
+  $: sortedSessions = [...filteredSessions].sort((a, b) => {
     const av = a[sortCol] ?? '';
     const bv = b[sortCol] ?? '';
     if (typeof av === 'number') return (av - bv) * sortDir;
@@ -125,23 +168,22 @@
     svg.selectAll('.tick line').attr('stroke', '#2D2F31');
   }
 
-  onMount(async () => {
-    const [s, sess] = await Promise.all([getUsageSummary(), getUsageSessions()]);
-    summary = s;
-    sessions = sess;
-    loading = false;
-
-    // Draw chart after DOM update
-    setTimeout(() => {
-      if (summary && summary.daily) drawChart(summary.daily);
-    }, 50);
-  });
+  onMount(() => loadData());
 </script>
 
 <div class="main-header">
   <h2>Usage Analytics</h2>
+  <div style="display: flex; align-items: center; gap: 6px;">
+    {#each [7, 30, 90] as d}
+      <button class="graph-btn" class:active={days === d} on:click={() => setDays(d)}>{d}d</button>
+    {/each}
+    <button class="graph-btn" on:click={() => exportUsageCsv(days)}>↓ CSV</button>
+  </div>
   {#if summary}
-    <span class="header-meta">Last 30 days · {summary.session_count} sessions</span>
+    <span class="header-meta">
+      {#if selectedModel}<button class="clear-filter" on:click={() => selectedModel = ''}>✕ {selectedModel.replace('claude-', '')}</button> · {/if}
+      Last {days}d · {filteredSessions.length} sessions
+    </span>
   {/if}
 </div>
 
@@ -192,13 +234,13 @@
         <h3>Model Breakdown</h3>
         <div class="model-list">
           {#each Object.entries(summary.models).sort((a, b) => b[1].count - a[1].count) as [name, data]}
-            <div class="model-row">
+            <button class="model-row" class:active={selectedModel === name} on:click={() => toggleModel(name)}>
               <span class="model-dot" style="background: {modelColor(name)}"></span>
               <span class="model-name">{name.replace('claude-', '')}</span>
               <span class="model-count">{data.count} msgs</span>
               <span class="model-tokens">{fmt(data.input + data.output)}</span>
               <span class="model-cost">{fmtCost(data.cost)}</span>
-            </div>
+            </button>
           {/each}
         </div>
       </div>
@@ -246,7 +288,12 @@
     border-bottom: 1px solid var(--border);
   }
   .main-header h2 { margin: 0; font-size: 15px; font-weight: 600; color: var(--ink-primary); }
-  .header-meta { font-size: 11px; color: var(--ink-tertiary); }
+  .header-meta { font-size: 11px; color: var(--ink-tertiary); display: flex; align-items: center; gap: 4px; }
+  .clear-filter {
+    font-size: 10px; padding: 1px 6px; border-radius: 4px;
+    background: rgba(88, 139, 248, 0.15); border: 1px solid var(--primary);
+    color: var(--primary); cursor: pointer;
+  }
 
   .main-content {
     flex: 1;
@@ -312,18 +359,33 @@
   .chart-container { width: 100%; height: 180px; }
 
   /* Model breakdown */
-  .model-list { display: flex; flex-direction: column; gap: 6px; }
+  .model-list { display: flex; flex-direction: column; gap: 4px; }
   .model-row {
-    display: flex;
+    display: grid;
+    grid-template-columns: 10px 1fr auto auto auto;
     align-items: center;
-    gap: 8px;
-    padding: 4px 0;
+    gap: 10px;
+    padding: 8px 10px;
+    width: 100%;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    cursor: pointer;
+    font-family: inherit;
+    color: inherit;
+    transition: all 0.15s;
+    text-align: left;
   }
-  .model-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
-  .model-name { font-size: 12px; color: var(--ink-primary); flex: 1; font-weight: 500; }
-  .model-count { font-size: 10px; color: var(--ink-tertiary); }
-  .model-tokens { font-size: 11px; color: var(--ink-secondary); font-variant-numeric: tabular-nums; }
-  .model-cost { font-size: 11px; color: var(--green); font-variant-numeric: tabular-nums; }
+  .model-row:hover { background: var(--surface-03); }
+  .model-row.active {
+    background: var(--surface-03);
+    border-color: var(--primary);
+  }
+  .model-dot { width: 8px; height: 8px; border-radius: 50%; }
+  .model-name { font-size: 13px; color: var(--ink-primary); font-weight: 600; }
+  .model-count { font-size: 11px; color: var(--ink-tertiary); text-align: right; white-space: nowrap; }
+  .model-tokens { font-size: 12px; color: var(--ink-secondary); font-variant-numeric: tabular-nums; text-align: right; font-weight: 500; }
+  .model-cost { font-size: 12px; color: var(--green); font-variant-numeric: tabular-nums; text-align: right; font-weight: 600; }
 
   /* Session table */
   .sessions-section { margin-top: 4px; }

@@ -73,6 +73,49 @@ pub fn extract(content: &str, file_path: &str, ns: &NamespaceConfig) -> Option<V
         extract_body(&body, &mut triples, ns);
     }
 
+    // Auto-link .paul/ documents to their project
+    if file_path.contains(".paul/") {
+        // Link to project via paul.json-derived slug or path-derived slug
+        let project_slug = file_path
+            .split(".paul/")
+            .next()
+            .unwrap_or("")
+            .trim_end_matches('/')
+            .rsplit('/')
+            .next()
+            .unwrap_or("unknown")
+            .replace([' ', '.'], "-")
+            .to_lowercase();
+
+        if !project_slug.is_empty() && project_slug != "unknown" {
+            triples.push((
+                format!("{p}:relatedTo"),
+                format!("<{}project/{}>", ns.uri, project_slug),
+            ));
+        }
+
+        // Link PLAN ↔ SUMMARY pairs in same phase directory
+        if file_path.ends_with("-PLAN.md") {
+            let summary_path = file_path.replace("-PLAN.md", "-SUMMARY.md");
+            let summary_slug = summary_path
+                .replace(['/', '\\', '.'], "-")
+                .to_lowercase();
+            triples.push((
+                format!("{p}:relatedTo"),
+                format!("<{}document/{}>", ns.uri, summary_slug),
+            ));
+        } else if file_path.ends_with("-SUMMARY.md") {
+            let plan_path = file_path.replace("-SUMMARY.md", "-PLAN.md");
+            let plan_slug = plan_path
+                .replace(['/', '\\', '.'], "-")
+                .to_lowercase();
+            triples.push((
+                format!("{p}:relatedTo"),
+                format!("<{}document/{}>", ns.uri, plan_slug),
+            ));
+        }
+    }
+
     Some(triples)
 }
 

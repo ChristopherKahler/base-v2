@@ -133,12 +133,13 @@ html, body {
 
 /* Graph controls */
 .graph-btn {
-  display: inline-flex; align-items: center; gap: var(--sp-xxs);
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-xxs);
   padding: var(--sp-xxs) var(--sp-xs); border-radius: var(--r-base);
   font-size: 12px; font-weight: 500; cursor: pointer;
   border: 1px solid var(--hairline); background: var(--surface-2);
   color: var(--ink-muted); transition: background 0.15s, color 0.15s;
   font-family: var(--font-sans);
+  min-width: 64px; text-align: center;
 }
 .graph-btn:hover { background: var(--surface-3); color: var(--ink); }
 

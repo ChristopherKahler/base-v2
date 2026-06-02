@@ -83,12 +83,72 @@ export async function updateTaskStatus(iri, status) {
   } catch { return null; }
 }
 
-export async function getUsageSummary() {
-  try { const r = await fetch(`${BASE}/api/usage/summary`); return r.ok ? await r.json() : null; }
+export async function getUsageSummary(days = 30) {
+  try { const r = await fetch(`${BASE}/api/usage/summary?days=${days}`); return r.ok ? await r.json() : null; }
   catch { return null; }
 }
 
-export async function getUsageSessions() {
-  try { const r = await fetch(`${BASE}/api/usage/sessions`); return r.ok ? await r.json() : []; }
+export async function getUsageSessions(days = 30) {
+  try { const r = await fetch(`${BASE}/api/usage/sessions?days=${days}`); return r.ok ? await r.json() : []; }
   catch { return []; }
+}
+
+export async function reloadGraph() {
+  try {
+    const r = await fetch(`${BASE}/api/graph/reload`, { method: 'POST' });
+    return r.ok ? await r.json() : null;
+  } catch { return null; }
+}
+
+export async function createTask(name, project, status = 'active') {
+  try {
+    const r = await fetch(`${BASE}/api/ops/task`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, project, status }),
+    });
+    return r.ok ? await r.json() : null;
+  } catch { return null; }
+}
+
+export async function createEntity(name, type, domain) {
+  try {
+    const r = await fetch(`${BASE}/api/graph/entity`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, type, domain }),
+    });
+    return r.ok ? await r.json() : null;
+  } catch { return null; }
+}
+
+export async function getDomains() {
+  try { const r = await fetch(`${BASE}/api/domains`); return r.ok ? await r.json() : []; }
+  catch { return []; }
+}
+
+export async function addRule(domain, text) {
+  try {
+    const r = await fetch(`${BASE}/api/domains/rule`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ domain, text }),
+    });
+    return r.ok ? await r.json() : null;
+  } catch { return null; }
+}
+
+export async function deleteRule(domain, text) {
+  try {
+    const r = await fetch(`${BASE}/api/domains/rule`, {
+      method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ domain, text }),
+    });
+    return r.ok ? await r.json() : null;
+  } catch { return null; }
+}
+
+export function exportUsageCsv(days = 30) {
+  window.open(`${BASE}/api/export/usage-csv?days=${days}`, '_blank');
+}
+
+export function exportGraphJson() {
+  window.open(`${BASE}/api/export/graph-json`, '_blank');
 }

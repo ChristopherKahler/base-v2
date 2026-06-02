@@ -228,11 +228,21 @@ pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Res
         .map(|(_, _, count)| count)
         .sum();
 
+    // Capture first 120 chars of the prompt for dashboard display
+    let prompt_preview = if prompt.len() > 120 {
+        Some(format!("{}…", &prompt[..117]))
+    } else {
+        Some(prompt.clone())
+    };
+
     Ok(super::HookEventData {
         domains_matched,
         rules_injected: total_rules,
         suppressed: deduped_count,
         prompt_num: Some(session.prompt_count),
+        prompt_text: prompt_preview,
+        tool_name: None,
+        file_path: None,
     })
 }
 

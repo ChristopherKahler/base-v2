@@ -37,6 +37,9 @@ pub async fn start(port: u16, cwd: PathBuf) {
         }
     };
 
+    // Rotate hook event log if oversized
+    super::api::rotate_hook_log(&trig_path);
+
     let state = Arc::new(AppState {
         store: Mutex::new(store),
         config,
@@ -64,6 +67,18 @@ pub async fn start(port: u16, cwd: PathBuf) {
         // Usage Analytics
         .route("/api/usage/summary", get(super::api::usage_summary))
         .route("/api/usage/sessions", get(super::api::usage_sessions))
+        // Graph management
+        .route("/api/graph/reload", post(super::api::reload_graph))
+        .route("/api/graph/entity", post(super::api::create_entity))
+        // Task creation
+        .route("/api/ops/task", post(super::api::create_task))
+        // Domain rules
+        .route("/api/domains", get(super::api::get_domains))
+        .route("/api/domains/rule", post(super::api::add_rule))
+        .route("/api/domains/rule", delete(super::api::delete_rule))
+        // Export
+        .route("/api/export/usage-csv", get(super::api::export_usage_csv))
+        .route("/api/export/graph-json", get(super::api::export_graph_json))
         // WebSocket
         .route("/api/ws/session", get(super::api::ws_session))
         .fallback(get(serve_static))

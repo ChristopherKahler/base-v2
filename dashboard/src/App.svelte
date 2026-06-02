@@ -3,6 +3,7 @@
   import OperationsPanel from './panels/OperationsPanel.svelte';
   import SessionActivity from './panels/SessionActivity.svelte';
   import UsageAnalytics from './panels/UsageAnalytics.svelte';
+  import DomainRules from './panels/DomainRules.svelte';
 
   let activePanel = 'graph';
 
@@ -11,6 +12,7 @@
     { id: 'operations', label: 'Operations', color: 'var(--green)', ready: true },
     { id: 'session', label: 'Session Activity', color: 'var(--accent-cyan)', ready: true },
     { id: 'usage', label: 'Usage Analytics', color: 'var(--accent-purple)', ready: true },
+    { id: 'domains', label: 'Domain Rules', color: 'var(--yellow)', ready: true },
   ];
 </script>
 
@@ -47,6 +49,8 @@
       <SessionActivity />
     {:else if activePanel === 'usage'}
       <UsageAnalytics />
+    {:else if activePanel === 'domains'}
+      <DomainRules />
     {/if}
   </main>
 </div>

@@ -1,8 +1,20 @@
 <script>
   import { onMount } from 'svelte';
-  import { getProjects, getDecisions, getReminders, updateTaskStatus } from '../lib/api.js';
+  import { getProjects, getDecisions, getReminders, updateTaskStatus, createTask } from '../lib/api.js';
 
   let projects = [];
+  let showTaskForm = false;
+  let newTaskName = '';
+  let newTaskProject = '';
+
+  async function doCreateTask() {
+    if (!newTaskName.trim() || !newTaskProject) return;
+    await createTask(newTaskName, newTaskProject);
+    newTaskName = '';
+    showTaskForm = false;
+    const [p] = await Promise.all([getProjects()]);
+    projects = p;
+  }
   let decisions = [];
   let reminders = [];
   let loading = true;
@@ -132,6 +144,7 @@
       </select>
     {/if}
     <div style="display: flex; gap: var(--sp-xxs);">
+      <button class="graph-btn" on:click={() => showTaskForm = !showTaskForm}>+ Task</button>
       <button class="graph-btn" class:active={viewMode === 'kanban'} on:click={() => viewMode = 'kanban'}>⊞ Kanban</button>
       <button class="graph-btn" class:active={viewMode === 'table'} on:click={() => viewMode = 'table'}>☰ Table</button>
     </div>
@@ -139,6 +152,17 @@
 </div>
 
 <div class="main-content">
+  {#if showTaskForm}
+    <div class="entity-form" style="display: flex; align-items: center; gap: 6px; padding: 8px 24px; background: var(--surface-02); border-bottom: 1px solid var(--border);">
+      <input bind:value={newTaskName} placeholder="Task name" style="background: var(--surface-03); border: 1px solid var(--border); color: var(--ink-primary); padding: 4px 8px; border-radius: 4px; font-size: 12px; width: 200px;" />
+      <select bind:value={newTaskProject} style="background: var(--surface-03); border: 1px solid var(--border); color: var(--ink-primary); padding: 4px 6px; border-radius: 4px; font-size: 12px; appearance: none; -webkit-appearance: none; background-image: url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%2368686A'/%3E%3C/svg%3E&quot;); background-repeat: no-repeat; background-position: right 6px center; padding-right: 20px;">
+        <option value="">Select project</option>
+        {#each projects as p}<option value={p.name}>{p.name}</option>{/each}
+      </select>
+      <button class="graph-btn" on:click={doCreateTask} disabled={!newTaskName.trim() || !newTaskProject}>Create</button>
+      <button class="graph-btn" on:click={() => showTaskForm = false}>Cancel</button>
+    </div>
+  {/if}
   {#if loading}
     <div class="loading">Loading operations...</div>
   {:else if projects.length === 0}
@@ -282,5 +306,10 @@
   }
   :global(.kanban-card[draggable="true"]:active) {
     cursor: grabbing;
+  }
+  .entity-form select option,
+  :global(.ops-select option) {
+    background: #15171C;
+    color: #ffffff;
   }
 </style>

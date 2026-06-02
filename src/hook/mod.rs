@@ -16,6 +16,31 @@ pub struct HookEventData {
     pub suppressed: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prompt_num: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt_text: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_path: Option<String>,
+}
+
+/// Extract tool name and file path from hook event JSON.
+fn extract_tool_context(event: &serde_json::Value) -> (Option<String>, Option<String>) {
+    let tool = event.get("tool_name")
+        .or_else(|| event.get("tool").and_then(|t| t.get("name")))
+        .and_then(|v| v.as_str())
+        .map(String::from);
+
+    let file = event.get("tool_input")
+        .and_then(|ti| {
+            ti.get("file_path")
+                .or_else(|| ti.get("path"))
+                .or_else(|| ti.get("command"))
+        })
+        .and_then(|v| v.as_str())
+        .map(String::from);
+
+    (tool, file)
 }
 
 /// Entry point for all hook events. Fail-open: any error → stderr only, exit 0, empty stdout.
@@ -49,11 +74,13 @@ fn run(event: &str) -> anyhow::Result<HookEventData> {
         }
         "pre-tool-use" => {
             pre_tool_use::handle(&config, &cwd, &stdin_json)?;
-            Ok(HookEventData::default())
+            let (tool_name, file_path) = extract_tool_context(&stdin_json);
+            Ok(HookEventData { tool_name, file_path, ..Default::default() })
         }
         "post-tool-use" => {
             post_tool_use::handle(&config, &cwd, &stdin_json)?;
-            Ok(HookEventData::default())
+            let (tool_name, file_path) = extract_tool_context(&stdin_json);
+            Ok(HookEventData { tool_name, file_path, ..Default::default() })
         }
         "user-prompt-submit" => user_prompt_submit::handle(&config, &cwd, &stdin_json),
         _ => Ok(HookEventData::default()),
@@ -80,6 +107,9 @@ fn log_hook_event(hook: &str, success: bool, data: Option<&HookEventData>) {
         "rules_injected": data.map(|d| d.rules_injected).unwrap_or(0),
         "suppressed": data.map(|d| d.suppressed).unwrap_or(0),
         "prompt_num": data.and_then(|d| d.prompt_num),
+        "prompt_text": data.and_then(|d| d.prompt_text.as_deref()),
+        "tool_name": data.and_then(|d| d.tool_name.as_deref()),
+        "file_path": data.and_then(|d| d.file_path.as_deref()),
     });
 
     use std::io::Write;

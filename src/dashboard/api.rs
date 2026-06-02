@@ -882,14 +882,14 @@ fn estimate_cost(model: &str, input: u64, output: u64, cache_read: u64, cache_wr
         / 1_000_000.0
 }
 
-fn parse_usage_data() -> (UsageSummary, Vec<SessionUsageEntry>) {
+fn parse_usage_data(days: u32) -> (UsageSummary, Vec<SessionUsageEntry>) {
     use std::collections::HashMap;
 
     let claude_dir = dirs::home_dir()
         .map(|h| h.join(".claude").join("projects"))
         .unwrap_or_default();
 
-    let cutoff = chrono::Local::now() - chrono::Duration::days(30);
+    let cutoff = chrono::Local::now() - chrono::Duration::days(days as i64);
     let cutoff_str = cutoff.format("%Y-%m-%d").to_string();
 
     let mut total_input = 0u64;
@@ -924,7 +924,7 @@ fn parse_usage_data() -> (UsageSummary, Vec<SessionUsageEntry>) {
             if let Ok(meta) = std::fs::metadata(&path) {
                 if let Ok(modified) = meta.modified() {
                     let age = modified.elapsed().unwrap_or_default();
-                    if age > std::time::Duration::from_secs(30 * 24 * 3600) { continue; }
+                    if age > std::time::Duration::from_secs(days as u64 * 24 * 3600) { continue; }
                 }
             }
 
@@ -1012,9 +1012,8 @@ fn parse_usage_data() -> (UsageSummary, Vec<SessionUsageEntry>) {
         .collect();
     daily.sort_by(|a, b| a.date.cmp(&b.date));
 
-    // Sort sessions newest-first
+    // Sort sessions newest-first (no cap — show all within the time window)
     sessions.sort_by(|a, b| b.started.cmp(&a.started));
-    sessions.truncate(50);
 
     let summary = UsageSummary {
         total_input,
@@ -1030,12 +1029,353 @@ fn parse_usage_data() -> (UsageSummary, Vec<SessionUsageEntry>) {
     (summary, sessions)
 }
 
-pub async fn usage_summary() -> Json<UsageSummary> {
-    let (summary, _) = parse_usage_data();
+#[derive(Deserialize)]
+pub struct UsageQuery {
+    pub days: Option<u32>,
+}
+
+pub async fn usage_summary(Query(q): Query<UsageQuery>) -> Json<UsageSummary> {
+    let (summary, _) = parse_usage_data(q.days.unwrap_or(30));
     Json(summary)
 }
 
-pub async fn usage_sessions() -> Json<Vec<SessionUsageEntry>> {
-    let (_, sessions) = parse_usage_data();
+pub async fn usage_sessions(Query(q): Query<UsageQuery>) -> Json<Vec<SessionUsageEntry>> {
+    let (_, sessions) = parse_usage_data(q.days.unwrap_or(30));
     Json(sessions)
+}
+
+// ─── Graph Reload ───────────────────────────────────────────
+
+pub async fn reload_graph(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let new_store = crate::store::load_graph(&state.trig_path)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let mut store = state.store.lock().unwrap();
+    *store = new_store;
+
+    Ok(Json(serde_json::json!({ "reloaded": true })))
+}
+
+// ─── Task Creation ──────────────────────────────────────────
+
+#[derive(Deserialize)]
+pub struct CreateTaskBody {
+    pub name: String,
+    pub project: String,
+    pub status: Option<String>,
+}
+
+pub async fn create_task(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<CreateTaskBody>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let ns = &state.config.namespace;
+    let p = &ns.prefix;
+    let pfx = crate::crud::prefixes(ns);
+    let status = body.status.as_deref().unwrap_or("active");
+    let slug = crate::crud::slugify(&body.name);
+    let task_iri = crate::crud::build_iri(ns, "task", &slug);
+    let project_slug = crate::crud::slugify(&body.project);
+    let project_iri = crate::crud::build_iri(ns, "project", &project_slug);
+
+    let mut store = state.store.lock().unwrap();
+
+    let insert = format!(
+        "{pfx}\nINSERT DATA {{\n  GRAPH <{graph}> {{\n\
+           <{task_iri}> rdf:type {p}:Task .\n\
+           <{task_iri}> {p}:name \"{name}\" .\n\
+           <{task_iri}> {p}:status \"{status}\" .\n\
+           <{project_iri}> {p}:hasTask <{task_iri}> .\n\
+           <{task_iri}> {p}:belongsTo <{project_iri}> .\n\
+         }}\n}}",
+        graph = crate::crud::workspace_graph_iri(ns, &crate::crud::workspace_slug(&state.cwd)),
+        name = body.name.replace('"', "\\\""),
+    );
+
+    store.update(&insert).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    crate::store::write_back(&store, &state.trig_path)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(Json(serde_json::json!({ "iri": task_iri, "name": body.name, "status": status })))
+}
+
+// ─── Entity Creation ────────────────────────────────────────
+
+#[derive(Deserialize)]
+pub struct CreateEntityBody {
+    pub name: String,
+    pub r#type: String,
+    pub domain: Option<String>,
+}
+
+pub async fn create_entity(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<CreateEntityBody>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let ns = &state.config.namespace;
+    let p = &ns.prefix;
+    let pfx = crate::crud::prefixes(ns);
+    let slug = crate::crud::slugify(&body.name);
+    let entity_iri = crate::crud::build_iri(ns, "entity", &slug);
+    let ws_slug = crate::crud::workspace_slug(&state.cwd);
+    let graph = crate::crud::workspace_graph_iri(ns, &ws_slug);
+
+    let mut domain_triple = String::new();
+    if let Some(ref domain) = body.domain {
+        let domain_slug = crate::crud::slugify(domain);
+        let domain_iri = crate::crud::build_iri(ns, "domain", &domain_slug);
+        domain_triple = format!("<{entity_iri}> {p}:hasDomain <{domain_iri}> .\n");
+    }
+
+    let mut store = state.store.lock().unwrap();
+
+    let insert = format!(
+        "{pfx}\nINSERT DATA {{\n  GRAPH <{graph}> {{\n\
+           <{entity_iri}> rdf:type {p}:{etype} .\n\
+           <{entity_iri}> {p}:name \"{name}\" .\n\
+           {domain_triple}\
+         }}\n}}",
+        etype = body.r#type,
+        name = body.name.replace('"', "\\\""),
+    );
+
+    store.update(&insert).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    crate::store::write_back(&store, &state.trig_path)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(Json(serde_json::json!({ "iri": entity_iri, "name": body.name, "type": body.r#type })))
+}
+
+// ─── Domain Rules ───────────────────────────────────────────
+
+#[derive(Serialize)]
+pub struct DomainInfo {
+    pub name: String,
+    pub mode: String,
+    pub prompt_keywords: Vec<String>,
+    pub paths: Vec<String>,
+    pub rules: Vec<String>,
+    pub sticky: bool,
+}
+
+pub async fn get_domains(
+    State(state): State<Arc<AppState>>,
+) -> Json<Vec<DomainInfo>> {
+    let domains = crate::domain::load_domains(&state.cwd);
+    let store = state.store.lock().unwrap();
+    let ns = &state.config.namespace;
+    let p = &ns.prefix;
+    let pfx = crate::crud::prefixes(ns);
+
+    let result: Vec<DomainInfo> = domains.iter().map(|d| {
+        // Merge TOML rules with graph-native rules
+        let mut rules = d.rules.clone();
+
+        let domain_slug = crate::crud::slugify(&d.name);
+        let domain_iri = crate::crud::build_iri(ns, "domain", &domain_slug);
+        let sparql = format!(
+            "{pfx}\nSELECT ?text WHERE {{\n\
+               GRAPH ?g {{ <{domain_iri}> {p}:hasRule ?rule . ?rule {p}:ruleText ?text }}\n\
+             }} ORDER BY ?text"
+        );
+
+        if let Ok(oxigraph::sparql::QueryResults::Solutions(solutions)) = store.query(&sparql) {
+            for row in solutions.flatten() {
+                if let Some(t) = row.get("text") {
+                    let text = term_str(t.into());
+                    if !text.is_empty() && !rules.contains(&text) {
+                        rules.push(text);
+                    }
+                }
+            }
+        }
+
+        DomainInfo {
+            name: d.name.clone(),
+            mode: if d.is_always() { "always".into() } else { "triggered".into() },
+            prompt_keywords: d.prompt_keywords.clone(),
+            paths: d.paths.clone(),
+            rules,
+            sticky: d.sticky,
+        }
+    }).collect();
+    Json(result)
+}
+
+// ─── Rule CRUD ──────────────────────────────────────────────
+
+#[derive(Deserialize)]
+pub struct AddRuleBody {
+    pub domain: String,
+    pub text: String,
+}
+
+pub async fn add_rule(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<AddRuleBody>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let ns = &state.config.namespace;
+    let p = &ns.prefix;
+    let pfx = crate::crud::prefixes(ns);
+    let domain_slug = crate::crud::slugify(&body.domain);
+    let domain_iri = crate::crud::build_iri(ns, "domain", &domain_slug);
+    let rule_slug = crate::crud::slugify(&body.text);
+    let rule_iri = crate::crud::build_iri(ns, "rule", &rule_slug);
+    let ws_slug = crate::crud::workspace_slug(&state.cwd);
+    let graph = crate::crud::workspace_graph_iri(ns, &ws_slug);
+
+    let mut store = state.store.lock().unwrap();
+
+    let insert = format!(
+        "{pfx}\nINSERT DATA {{\n  GRAPH <{graph}> {{\n\
+           <{rule_iri}> rdf:type {p}:Rule .\n\
+           <{rule_iri}> {p}:ruleText \"{}\" .\n\
+           <{domain_iri}> {p}:hasRule <{rule_iri}> .\n\
+         }}\n}}",
+        body.text.replace('"', "\\\""),
+    );
+
+    store.update(&insert).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    crate::store::write_back(&store, &state.trig_path)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(Json(serde_json::json!({ "rule_iri": rule_iri, "domain": body.domain, "text": body.text })))
+}
+
+#[derive(Deserialize)]
+pub struct DeleteRuleBody {
+    pub domain: String,
+    pub text: String,
+}
+
+pub async fn delete_rule(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<DeleteRuleBody>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let ns = &state.config.namespace;
+    let p = &ns.prefix;
+    let pfx = crate::crud::prefixes(ns);
+    let rule_slug = crate::crud::slugify(&body.text);
+    let rule_iri = crate::crud::build_iri(ns, "rule", &rule_slug);
+
+    let mut store = state.store.lock().unwrap();
+
+    let delete = format!(
+        "{pfx}\nDELETE WHERE {{ GRAPH ?g {{ <{rule_iri}> ?p ?o }} }};\n\
+         DELETE WHERE {{ GRAPH ?g {{ ?s {p}:hasRule <{rule_iri}> }} }}"
+    );
+
+    store.update(&delete).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    crate::store::write_back(&store, &state.trig_path)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(Json(serde_json::json!({ "deleted": true })))
+}
+
+// ─── Export ─────────────────────────────────────────────────
+
+pub async fn export_usage_csv(Query(q): Query<UsageQuery>) -> axum::response::Response {
+    use axum::http::header;
+
+    let (_, sessions) = parse_usage_data(q.days.unwrap_or(30));
+    let mut csv = String::from("session_id,project,model,input_tokens,output_tokens,cost_usd,started,messages\n");
+    for s in &sessions {
+        csv.push_str(&format!(
+            "{},{},{},{},{},{:.4},{},{}\n",
+            s.session_id, s.project, s.model, s.input, s.output, s.cost, s.started, s.messages
+        ));
+    }
+
+    (
+        StatusCode::OK,
+        [
+            (header::CONTENT_TYPE, "text/csv"),
+            (header::CONTENT_DISPOSITION, "attachment; filename=\"usage.csv\""),
+        ],
+        csv,
+    ).into_response()
+}
+
+pub async fn export_graph_json(
+    State(state): State<Arc<AppState>>,
+) -> Json<serde_json::Value> {
+    let ns = &state.config.namespace;
+    let store = state.store.lock().unwrap();
+
+    // Reuse existing nodes + edges queries
+    let nodes_sparql = build_nodes_sparql(ns);
+    let edges_sparql = build_edges_sparql(ns);
+
+    let mut nodes_list = Vec::new();
+    if let Ok(oxigraph::sparql::QueryResults::Solutions(solutions)) = store.query(&nodes_sparql) {
+        for row in solutions.flatten() {
+            let name = row.get("name").map(|t| term_str(t.into())).unwrap_or_default();
+            let iri = row.get("entity").map(|t| term_str(t.into())).unwrap_or_default();
+            nodes_list.push(serde_json::json!({"iri": iri, "name": name}));
+        }
+    }
+
+    let mut edges_list = Vec::new();
+    if let Ok(oxigraph::sparql::QueryResults::Solutions(solutions)) = store.query(&edges_sparql) {
+        for row in solutions.flatten() {
+            let s = row.get("s").map(|t| term_str(t.into())).unwrap_or_default();
+            let p_val = row.get("p").map(|t| term_str(t.into())).unwrap_or_default();
+            let o = row.get("o").map(|t| term_str(t.into())).unwrap_or_default();
+            edges_list.push(serde_json::json!({"source": s, "predicate": p_val, "target": o}));
+        }
+    }
+
+    Json(serde_json::json!({
+        "nodes": nodes_list,
+        "edges": edges_list,
+        "exported_at": chrono::Local::now().to_rfc3339(),
+    }))
+}
+
+/// Build nodes SPARQL (extracted for reuse by export)
+fn build_nodes_sparql(ns: &crate::config::NamespaceConfig) -> String {
+    let p = &ns.prefix;
+    let pfx = crate::crud::prefixes(ns);
+    format!(
+        "{pfx}\nSELECT DISTINCT ?entity ?type ?name ?status ?path WHERE {{\n\
+           GRAPH ?g {{\n\
+             ?entity rdf:type ?type .\n\
+             OPTIONAL {{ ?entity {p}:name ?name }}\n\
+             OPTIONAL {{ ?entity {p}:status ?status }}\n\
+             OPTIONAL {{ ?entity {p}:path ?path }}\n\
+           }}\n\
+         }}"
+    )
+}
+
+/// Build edges SPARQL (extracted for reuse by export)
+fn build_edges_sparql(ns: &crate::config::NamespaceConfig) -> String {
+    let p = &ns.prefix;
+    let pfx = crate::crud::prefixes(ns);
+    format!(
+        "{pfx}\nSELECT ?s ?p ?o WHERE {{\n\
+           GRAPH ?g {{ ?s ?p ?o }}\n\
+           FILTER(isIRI(?o))\n\
+           FILTER(?p != rdf:type)\n\
+         }}"
+    )
+}
+
+// ─── Log Rotation ───────────────────────────────────────────
+
+/// Truncate hook-events.jsonl if > 10MB, keeping last 5000 lines.
+pub fn rotate_hook_log(trig_path: &std::path::Path) {
+    let Some(base_dir) = trig_path.parent() else { return };
+    let log_path = base_dir.join("hook-events.jsonl");
+
+    let Ok(meta) = std::fs::metadata(&log_path) else { return };
+    if meta.len() < 10 * 1024 * 1024 { return; }
+
+    let Ok(content) = std::fs::read_to_string(&log_path) else { return };
+    let lines: Vec<&str> = content.lines().collect();
+    let keep = lines.len().saturating_sub(5000);
+    let tail: String = lines[keep..].join("\n") + "\n";
+    let _ = std::fs::write(&log_path, tail);
 }

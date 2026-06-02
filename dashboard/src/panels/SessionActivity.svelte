@@ -160,6 +160,24 @@
     'post-tool-use': 'POST-TOOL',
   };
 
+  function shortPath(p) {
+    if (!p) return '';
+    // Strip home dir prefix for readability
+    return p.replace(/^\/home\/[^/]+\//, '~/');
+  }
+
+  // Derive context bracket from latest prompt_num in live session
+  $: liveBracket = (() => {
+    const live = sessions.find(s => s.isLive);
+    if (!live) return null;
+    const n = live.maxPromptNum;
+    if (n <= 0) return null;
+    if (n <= 3) return { label: 'FRESH', color: 'var(--green)' };
+    if (n <= 10) return { label: 'MODERATE', color: 'var(--primary)' };
+    if (n <= 20) return { label: 'DEPLETED', color: 'var(--orange)' };
+    return { label: 'CRITICAL', color: 'var(--red)' };
+  })();
+
   onMount(() => { connect(); });
   onDestroy(() => {
     if (ws) ws.close();
@@ -175,7 +193,12 @@
       {#if connected}Live{:else if reconnecting}Reconnecting{:else}Offline{/if}
     </div>
   </div>
-  <span class="session-count">{sessions.length} session{sessions.length !== 1 ? 's' : ''}</span>
+  <div class="header-right">
+    {#if liveBracket}
+      <span class="bracket-badge" style="color: {liveBracket.color}; border-color: {liveBracket.color}" title="Context bracket: FRESH (1-3), MODERATE (4-10), DEPLETED (11-20), CRITICAL (21+) — deeper sessions get heavier re-injection">{liveBracket.label}</span>
+    {/if}
+    <span class="session-count">{sessions.length} session{sessions.length !== 1 ? 's' : ''}</span>
+  </div>
 </div>
 
 <div class="main-content">
@@ -236,11 +259,20 @@
 
           {#if expandedSession === session.id}
             <div class="session-events">
-              {#each session.events as ev (ev._id)}
+              {#each [...session.events].reverse() as ev (ev._id)}
                 <div class="ev-row">
                   <span class="ev-badge" style="background: {hookColors[ev.hook] || 'var(--ink-tertiary)'}">
                     {hookLabels[ev.hook] || ev.hook}
                   </span>
+                  {#if ev.tool_name}
+                    <span class="ev-tool">{ev.tool_name}</span>
+                  {/if}
+                  {#if ev.file_path}
+                    <span class="ev-file">{shortPath(ev.file_path)}</span>
+                  {/if}
+                  {#if ev.prompt_text}
+                    <span class="ev-prompt-text" title={ev.prompt_text}>{ev.prompt_text.length > 80 ? ev.prompt_text.slice(0, 77) + '…' : ev.prompt_text}</span>
+                  {/if}
                   {#if ev.domains_matched && ev.domains_matched.length > 0}
                     {#each ev.domains_matched as d}
                       <span class="ev-domain">{d}</span>
@@ -303,6 +335,19 @@
   @keyframes pulse {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.3; }
+  }
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .bracket-badge {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    padding: 1px 7px;
+    border-radius: 4px;
+    border: 1px solid;
   }
   .session-count {
     font-size: 11px;
@@ -463,6 +508,26 @@
     border-radius: 2px;
     color: var(--canvas);
     flex-shrink: 0;
+  }
+  .ev-tool {
+    font-size: 9px;
+    color: var(--ink-secondary);
+    font-weight: 500;
+  }
+  .ev-file {
+    font-size: 9px;
+    color: var(--ink-tertiary);
+    font-family: monospace;
+  }
+  .ev-prompt-text {
+    font-size: 10px;
+    color: var(--ink-muted);
+    font-style: italic;
+    max-width: 500px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: help;
   }
   .ev-domain {
     font-size: 9px;
