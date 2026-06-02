@@ -42,7 +42,7 @@ All of it is relational. A project has milestones. A milestone has tasks. A task
 
 ## What this looks like in practice
 
-You open a file. Before the content even loads, the pre-tool-use hook fires and injects:
+You tell Claude to fix a bug in the auth module. Claude reaches for `auth.rs`. Before the file content even loads, the pre-tool-use hook fires and injects:
 
 ```
 [AST] auth.rs - 8 entities
@@ -51,9 +51,9 @@ You open a file. Before the content even loads, the pre-tool-use hook fires and 
   Imported by: api.rs, middleware.rs, cli.rs
 ```
 
-You didn't ask for that. You didn't type a command. The hook saw the file path, queried the graph, and told you the shape of what you're about to read. Now you know there are 8 things in this file, what they are, and how they connect to the rest of the codebase. Before reading a single line of code.
+Claude didn't ask for that. No tool call, no extra prompt. The hook saw the file path, queried the graph, and gave Claude the full shape of the file before it read a single line. Claude now knows there are 8 entities, what they are, where they sit, and which other files depend on this one.
 
-You read lines 45-80. Post-tool-use fires:
+Claude reads lines 45-80 to look at `validate_token`. Post-tool-use fires:
 
 ```
 [AST] Lines 45-80: fn validate_token
@@ -61,9 +61,9 @@ You read lines 45-80. Post-tool-use fires:
   Called by: middleware.rs -> require_auth()
 ```
 
-Just for those 35 lines. Not the whole file. Not a report. The exact context for the exact code you're looking at.
+Just for those 35 lines. Not the whole file. Not a report. Claude gets the exact call chain for the exact code it's looking at. It already knows that changing `validate_token` will affect `middleware.rs` without having to search for it.
 
-You reach for grep. The hook intercepts:
+Claude tries to grep for a related function. The hook intercepts:
 
 ```
 <ast-hint>
@@ -73,7 +73,7 @@ The graph knows file locations, line numbers, and call relationships.
 </ast-hint>
 ```
 
-One SPARQL query instead of scanning 15 files.
+One SPARQL query instead of Claude scanning 15 files looking for a match. The graph already mapped the entire codebase - Claude just needs to ask it.
 
 ## How this compares
 
