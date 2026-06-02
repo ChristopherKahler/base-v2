@@ -88,7 +88,12 @@ pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Res
 
 /// Check if a file path is a source code file worth AST injection.
 fn is_source_file(path: &str) -> bool {
-    let exts = [".rs", ".py", ".js", ".ts", ".go", ".jsx", ".tsx", ".c", ".cpp", ".h", ".java", ".rb", ".swift"];
+    let exts = [
+        ".rs", ".py", ".js", ".ts", ".go", ".jsx", ".tsx", ".c", ".cpp", ".h", ".hpp",
+        ".java", ".rb", ".swift", ".kt", ".kts", ".scala", ".php", ".cs", ".lua", ".zig",
+        ".ps1", ".ex", ".exs", ".jl", ".vue", ".svelte", ".astro", ".dart", ".sql", ".r",
+        ".f90", ".pas", ".sh", ".bash", ".json", ".toml", ".yaml", ".yml",
+    ];
     exts.iter().any(|ext| path.ends_with(ext))
 }
 
@@ -104,12 +109,17 @@ fn grep_intercept(event: &serde_json::Value) -> Option<String> {
         .and_then(|ti| ti.get("command"))
         .and_then(|v| v.as_str())?;
 
-    // Only intercept code search patterns
+    // Intercept code search patterns (grep, rg, ag, ack, fd, find)
     let is_code_search = command.starts_with("grep -r")
         || command.starts_with("grep -rn")
         || command.starts_with("grep -n")
+        || command.starts_with("grep -l")
+        || command.starts_with("grep -rl")
         || command.contains("| grep")
         || command.starts_with("rg ")
+        || command.starts_with("ag ")
+        || command.starts_with("ack ")
+        || command.starts_with("fd ")
         || (command.starts_with("find ") && command.contains("-name"));
 
     if !is_code_search {

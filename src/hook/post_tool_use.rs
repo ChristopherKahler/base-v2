@@ -75,7 +75,12 @@ pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Res
 }
 
 fn is_source_file(path: &str) -> bool {
-    let exts = [".rs", ".py", ".js", ".ts", ".go", ".jsx", ".tsx", ".c", ".cpp", ".h", ".java", ".rb", ".swift"];
+    let exts = [
+        ".rs", ".py", ".js", ".ts", ".go", ".jsx", ".tsx", ".c", ".cpp", ".h", ".hpp",
+        ".java", ".rb", ".swift", ".kt", ".kts", ".scala", ".php", ".cs", ".lua", ".zig",
+        ".ps1", ".ex", ".exs", ".jl", ".vue", ".svelte", ".astro", ".dart", ".sql", ".r",
+        ".f90", ".pas", ".sh", ".bash", ".json", ".toml", ".yaml", ".yml",
+    ];
     exts.iter().any(|ext| path.ends_with(ext))
 }
 
