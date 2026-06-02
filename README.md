@@ -77,23 +77,28 @@ One SPARQL query instead of Claude scanning 15 files looking for a match. The gr
 
 ## How this compares
 
-**LSP** tells you where a symbol is defined. You ask, it answers. One language at a time. No project context, no session memory, no idea what you've already looked at.
+**LSP** tells you where a symbol is defined. You point at a symbol, it answers. One language at a time. No project context, no business context, no session memory, no idea what Claude already looked at this session.
 
-**Graphify** (58k stars) extracts your code into a JSON graph and generates a report. You query it by typing `/graphify query "question"` and an LLM interprets your question against the JSON. That's inference tokens spent on a database lookup. And you have to remember to ask every time.
+**Graphify** (58k stars, ~2 months old, YC S26) extracts code into a NetworkX JSON graph and generates a report. For code-only projects, it's tree-sitter AST output organized into communities via Leiden clustering - functions, classes, imports, call edges. The "knowledge graph" part only appears when you feed it docs/papers/images and pay for an LLM pass (Claude, Gemini, OpenAI, etc.) to annotate semantic relationships.
 
-**BASE** doesn't wait for you to ask.
+Querying is keyword matching against node labels (TF-IDF weighted string matching - exact, prefix, substring), not semantic search. `graphify query "how does auth work"` splits that into words and matches nodes with "auth" in the label. It doesn't understand the question. And every query is manual - you type `/graphify query` or the AI has to remember to ask. The PreToolUse hook nudges toward queries on grep, but only on Bash calls - if Claude uses Read to explore files, the hook doesn't fire.
+
+**BASE** doesn't wait for anyone to ask. The graph is wired into every hook in the pipeline. Claude touches a file, the map injects. Claude reads a section, the call chain injects. Claude greps, the intercept fires. No manual queries needed, no LLM in the query path, no tokens spent on lookups.
 
 |  | LSP | Graphify | BASE |
 |---|---|---|---|
-| How you ask | Point at a symbol | Type a query | You don't - it injects on file touch |
-| Query engine | Language server | LLM interprets JSON | SPARQL - deterministic, zero inference cost |
-| What it knows | Symbols in one language | Code across languages | Code + projects + tasks + decisions + people |
+| What it maps | Symbols in one language | Code structure (AST) + LLM annotations on docs | Code + projects + milestones + tasks + people + decisions + rules |
+| How you query | Point at a symbol | Keyword match against node labels | SPARQL - deterministic, zero inference cost |
+| How context flows | You ask, it answers | You ask, it answers | Automatic - hooks inject on file touch |
 | When it speaks | When asked | When asked | When relevant. Silent otherwise. |
-| Section awareness | Symbol-level | None | Knows the 40 lines you just read |
+| Section awareness | Symbol-level | None | Knows the exact lines Claude just read |
 | Session memory | None | None | Tracks what it injected, never repeats |
-| Subagent support | None | Manual | Automatic - all agents inherit hooks |
+| Subagent support | None | Manual per-agent | Automatic - every agent inherits hooks |
+| Graph model | Language server index | NetworkX JSON (nodes + edges) | RDF triples with typed ontological relationships |
+| Business context | None | None | Projects, milestones, tasks, people, decisions, domain rules |
+| Query cost | Free (local) | Free for code-only; LLM tokens for semantic pass | Free (SPARQL, no LLM) |
 
-The extractor that builds the graph is the same tree-sitter parser Graphify uses (we forked it). What happens after extraction is completely different. Graphify dumps JSON and generates a report. BASE loads triples into an ontological graph and wires SPARQL queries into the hook pipeline so the data flows automatically at the moment it matters.
+BASE uses the same tree-sitter extraction pipeline as Graphify for the AST pass (we forked their extractor). What happens after extraction is completely different. Graphify stores nodes and edges in a flat JSON file and queries via string matching. BASE loads typed triples into an RDF ontological graph where relationships have meaning (calls, importsFrom, contains, hasMethod, belongsTo, hasMilestone) and queries via SPARQL - the same query language that powers Wikidata and every serious knowledge graph. And the graph isn't just code. It's your entire operation - projects, people, decisions, rules - all relational, all cross-cutting, all queryable the same way.
 
 ## Quick start
 
