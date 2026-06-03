@@ -15,10 +15,18 @@ pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Res
     let mut data = super::HookEventData::default();
 
     // ─── Grep/find intercept (Bash tool) ─────────────────────
-    if let Some(hint) = grep_intercept(event) {
+    if let Some(hint) = grep_intercept(event, cwd) {
         output.push_str(&hint);
         output.push('\n');
         data.grep_intercepted = true;
+    }
+
+    // ─── Context-mode source file intercept ──────────────────
+    // When context-mode (ctx_batch_execute, ctx_execute) is used to scan
+    // source files, nudge toward base ast query first.
+    if let Some(hint) = context_mode_intercept(event, cwd) {
+        output.push_str(&hint);
+        output.push('\n');
     }
 
     // ─── Domain rule injection (file path match) ─────────────
@@ -133,8 +141,20 @@ fn is_source_file(path: &str) -> bool {
     exts.iter().any(|ext| path.ends_with(ext))
 }
 
+/// Check if AST graph has been populated for the current workspace.
+fn ast_graph_populated(cwd: &Path) -> bool {
+    let base_dir = crate::config::find_workspace_base(cwd);
+    match base_dir {
+        Some(bd) => {
+            let ast_path = bd.join("ast.ttl");
+            ast_path.exists() && std::fs::metadata(&ast_path).map(|m| m.len() > 0).unwrap_or(false)
+        }
+        None => false,
+    }
+}
+
 /// Detect grep/find/rg in Bash commands and suggest ast query instead.
-fn grep_intercept(event: &serde_json::Value) -> Option<String> {
+fn grep_intercept(event: &serde_json::Value, cwd: &Path) -> Option<String> {
     let tool_name = event.get("tool_name").and_then(|v| v.as_str())?;
     if tool_name != "Bash" {
         return None;
@@ -164,6 +184,20 @@ fn grep_intercept(event: &serde_json::Value) -> Option<String> {
 
     // Try to extract the search term
     let search_term = extract_search_term(command);
+
+    // Check if AST graph is populated — different message if not
+    if !ast_graph_populated(cwd) {
+        return Some(
+            "<ast-hint>\n\
+             AST graph not yet populated for this workspace.\n\
+             Would you like to index the codebase? Run:\n\
+               base sync --ast\n\
+             This takes ~10 seconds and indexes 35+ languages.\n\
+             Then use `base ast query` for code navigation instead of grep/find.\n\
+             </ast-hint>"
+                .to_string(),
+        );
+    }
 
     let suggestion = if let Some(term) = search_term {
         format!(
@@ -218,6 +252,63 @@ fn extract_search_term(command: &str) -> Option<String> {
     }
 
     None
+}
+
+/// Detect context-mode MCP tools scanning source files and nudge toward base ast query.
+/// Catches ctx_batch_execute and ctx_execute when commands reference source file patterns.
+fn context_mode_intercept(event: &serde_json::Value, cwd: &Path) -> Option<String> {
+    let tool_name = event.get("tool_name").and_then(|v| v.as_str())?;
+
+    // Match context-mode MCP tool names (plugin-namespaced)
+    let is_ctx_tool = tool_name.contains("ctx_batch_execute")
+        || tool_name.contains("ctx_execute")
+        || tool_name.contains("ctx_execute_file");
+
+    if !is_ctx_tool {
+        return None;
+    }
+
+    // Check if the tool input references source files
+    let input = event.get("tool_input")?;
+    let input_str = serde_json::to_string(input).unwrap_or_default();
+
+    // Look for source file extensions in the command/query text
+    let has_source_refs = [".rs", ".py", ".js", ".ts", ".go", ".tsx", ".jsx", ".vue", ".svelte"]
+        .iter()
+        .any(|ext| input_str.contains(ext));
+
+    // Also catch common code navigation commands
+    let has_nav_commands = ["cat ", "head ", "tail ", "find ", "grep ", "ls src", "ls ./src"]
+        .iter()
+        .any(|cmd| input_str.contains(cmd));
+
+    if !has_source_refs && !has_nav_commands {
+        return None;
+    }
+
+    if !ast_graph_populated(cwd) {
+        return Some(
+            "<ast-hint>\n\
+             AST graph not yet populated for this workspace.\n\
+             Would you like to index the codebase? Run:\n\
+               base sync --ast\n\
+             This takes ~10 seconds and indexes 35+ languages.\n\
+             Then use `base ast query` for code navigation instead of scanning files.\n\
+             </ast-hint>"
+                .to_string(),
+        );
+    }
+
+    Some(
+        "<ast-hint>\n\
+         BASE AST graph available. Before scanning source files, use:\n\
+           base ast query --file \"<filename>\"     (entity map for a file)\n\
+           base ast query --contains \"<name>\"     (find entities by name)\n\
+           base ast query --calls \"<function>\"     (call chain)\n\
+         The graph already knows the codebase structure — scan after, not before.\n\
+         </ast-hint>"
+            .to_string(),
+    )
 }
 
 /// Match domains by file path triggers and file_keywords against file content.

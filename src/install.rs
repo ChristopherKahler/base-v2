@@ -3,9 +3,10 @@ use std::path::Path;
 use anyhow::{Context, Result};
 
 use crate::config::BaseConfig;
+use crate::manifest::{self, Manifest};
 
-/// Run the full install process: build, symlink, create global tier, wire hooks.
-pub fn run(carl_json_path: Option<&Path>, skip_hooks: bool) -> Result<()> {
+/// Run the full install process: build, symlink, create global tier, wire hooks, write manifest.
+pub fn run(carl_json_path: Option<&Path>, skip_hooks: bool, full: bool) -> Result<()> {
     let home = dirs::home_dir().context("Cannot determine home directory")?;
     let binary_path = std::env::current_exe().context("Cannot determine binary path")?;
 
@@ -45,6 +46,9 @@ pub fn run(carl_json_path: Option<&Path>, skip_hooks: bool) -> Result<()> {
     let claude_md = home.join(".claude").join("CLAUDE.md");
     append_claude_md(&claude_md)?;
 
+    // Step 7: Write manifest.toml
+    write_manifest(&global_dir, full)?;
+
     println!("═══════════════════════════════════════");
     println!("✓ Install complete");
     println!("═══════════════════════════════════════\n");
@@ -57,7 +61,7 @@ pub fn run(carl_json_path: Option<&Path>, skip_hooks: bool) -> Result<()> {
         println!("  base install --carl ~/.carl/carl.json\n");
     }
     println!("───────────────────────────────────────");
-    println!("BASE — Built by Chris Kahler");
+    println!("ChrisAI — Built by Chris Kahler");
     println!("Chris AI Systems");
     println!();
     println!("Community & support:");
@@ -527,12 +531,17 @@ The `base` binary is on PATH. Use these commands proactively during sessions —
 | Before making assumptions about prior context | `base recall --keyword "..."` or `base recall --domain X` |
 | User asks to scaffold a new workspace | `base scaffold [path]` |
 
-### Code navigation (use INSTEAD of grep/rg for code search)
+### Code navigation — MANDATORY FIRST TOOL
+
+**ALWAYS use `base ast query` BEFORE grep, find, Read, or any MCP tool for code exploration.**
+The AST graph already knows every function, struct, class, import, and call relationship. Scanning files without checking the graph first is wasteful — the graph gives you the map, then you Read only what matters.
 
 - `base ast query --contains "auth"` (or `base a q -c "auth"`) — find entities by name
 - `base ast query --file "main.rs"` (or `base a q -f "main.rs"`) — list entities in a file
 - `base ast query --calls "validate"` — find all callers of a function
 - `base ast query --imports "config.rs"` (or `base a q -i "config.rs"`) — find importers
+
+**Order of operations:** `base ast query` first → understand structure → `Read` specific lines only. Never scan-then-understand when you can understand-then-read.
 
 ### Project management
 
@@ -570,6 +579,77 @@ The `base` binary is on PATH. Use these commands proactively during sessions —
 - `~/.base-gbl/` = global tier, `{workspace}/.base/` = workspace tier
 - Built by Chris Kahler · Chris AI Systems · https://chrisai.cv/skool
 "#;
+
+// ─── Step 7: Write manifest ─────────────────────────────────
+
+fn write_manifest(global_dir: &Path, full: bool) -> Result<()> {
+    print!("7. Write manifest.toml ... ");
+
+    let now = chrono::Local::now().to_rfc3339();
+    let mut manifest = Manifest::load().unwrap_or_default();
+
+    // Preserve existing chrisai.installed_at if already set
+    if manifest.chrisai.installed_at.is_empty() {
+        manifest.chrisai.installed_at = now.clone();
+    }
+
+    // Always update/create BASE component
+    let base_entry = manifest::ComponentEntry {
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        path: "~/.local/bin/base".to_string(),
+        installed_at: manifest
+            .components
+            .get("base")
+            .map(|c| c.installed_at.clone())
+            .unwrap_or_else(|| now.clone()),
+    };
+    manifest.components.insert("base".to_string(), base_entry);
+
+    if full {
+        // Detect and register all framework components
+        let component_names = ["paul", "seed", "skillsmith"];
+        for name in &component_names {
+            if let Some(entry) = manifest::detect_component(name) {
+                // Preserve existing installed_at if component was already registered
+                let installed_at = manifest
+                    .components
+                    .get(*name)
+                    .map(|c| c.installed_at.clone())
+                    .unwrap_or(entry.installed_at);
+
+                manifest.components.insert(
+                    name.to_string(),
+                    manifest::ComponentEntry {
+                        version: entry.version,
+                        path: entry.path,
+                        installed_at,
+                    },
+                );
+                println!("\n   ✓ {name} v{}", manifest.components[*name].version);
+            } else {
+                println!("\n   ⊘ {name} not found");
+            }
+        }
+    }
+
+    manifest.save()?;
+
+    // Summary
+    let component_list: Vec<String> = manifest
+        .components
+        .iter()
+        .map(|(k, v)| format!("{k} v{}", v.version))
+        .collect();
+
+    if full {
+        println!("\n   Manifest: {}/manifest.toml", global_dir.display());
+        println!("   Components: {}", component_list.join(", "));
+    } else {
+        println!("✓ ({})", component_list.join(", "));
+    }
+
+    Ok(())
+}
 
 fn append_claude_md(claude_md_path: &Path) -> Result<()> {
     print!("5. CLAUDE.md integration ... ");

@@ -5,22 +5,23 @@ path = "apps/base-v2"
 tags = ["rust", "framework", "context-engine"]
 
 [milestone]
-name = "v0.1 Proactive Context Engine"
-version = "0.1.0"
-status = "complete"
+name = "v1.0 Agentic OS Distribution"
+version = "1.0.0"
+status = "active"
+phases = 4
 
 [phase]
-number = 9
-name = "PAUL Integration Layer"
+number = 10
+name = "Manifest & Version Infrastructure"
 status = "complete"
-plans_completed = 2
+plans_completed = 1
 
 [loop]
 position = "IDLE"
 
 [stats]
-total_plans = 10
-last_activity = "2026-06-03T13:26:00-05:00"
+total_plans = 12
+last_activity = "2026-06-03T15:56:00-05:00"
 
 [paul]
 version = "1.4"

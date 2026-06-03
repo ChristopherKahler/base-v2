@@ -126,7 +126,7 @@ pub enum Commands {
         #[command(subcommand)]
         action: RuleAction,
     },
-    /// Install base globally: build, symlink, create ~/.base-gbl, wire hooks
+    /// Install base globally: build, symlink, create ~/.base-gbl, wire hooks, write manifest
     Install {
         /// Path to carl.json for decision migration
         #[arg(long)]
@@ -134,6 +134,14 @@ pub enum Commands {
         /// Skip hook wiring in settings.json
         #[arg(long)]
         skip_hooks: bool,
+        /// Register all ChrisAI components (PAUL, SEED, SKILLSMITH) in manifest
+        #[arg(long)]
+        full: bool,
+    },
+    /// Activate ChrisAI — enter your Skool classroom key to remove attribution
+    Activate {
+        /// Activation key from ChrisAI community
+        key: String,
     },
     /// Uninstall base: remove hooks from settings.json, remove binary, remove CLAUDE.md section
     Uninstall {
@@ -795,10 +803,17 @@ pub fn run() {
         }
 
         // ─── Install ─────────────────────────────────────────
-        Some(Commands::Install { carl, skip_hooks }) => {
+        Some(Commands::Install { carl, skip_hooks, full }) => {
             let carl_path = carl.as_ref().map(std::path::Path::new);
-            if let Err(e) = base::install::run(carl_path, skip_hooks) {
+            if let Err(e) = base::install::run(carl_path, skip_hooks, full) {
                 eprintln!("Install failed: {e}");
+            }
+        }
+
+        // ─── Activate ────────────────────────────────────────
+        Some(Commands::Activate { key }) => {
+            if let Err(e) = base::manifest::activate(&key) {
+                eprintln!("{e}");
             }
         }
 

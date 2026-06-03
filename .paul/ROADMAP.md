@@ -6,8 +6,13 @@ Build the BASE v2 proactive context engine from the Rust scaffold up: define the
 
 ## Current Milestone
 
-**v0.1 Proactive Context Engine** (v0.1.0)
-Status: Complete ✓
+**v1.0 Agentic OS Distribution** (v1.0.0)
+Status: Active
+Phases: 1 of 4 complete
+
+## Previous Milestones
+
+### v0.1 Proactive Context Engine (v0.1.0) — Complete ✓
 Phases: 9 of 9 complete
 
 ## Phases
@@ -197,5 +202,148 @@ Phases: 9 of 9 complete
 - Operations panel or Usage Analytics integration (TBD based on Plan 1 output)
 
 ---
+
+## v1.0 Agentic OS Distribution — Phase Details
+
+### Phase 10: Manifest & Version Infrastructure
+
+**Goal:** Create the local manifest system that tracks installed Agentic OS components, versions, and update check state.
+**Depends on:** Nothing (first phase of new milestone)
+
+**Scope:**
+- Define `~/.base-gbl/manifest.toml` format:
+  ```toml
+  [agentic-os]
+  installed_at = "2026-06-03T14:00:00-05:00"
+  source = "https://chrisai.cv/skool"
+  token = ""  # HMAC(installed_at, compiled_secret). Valid token = direct install (no promos). Invalid/empty = community (full pipeline).
+
+  [components.base]
+  version = "0.1.0"
+  path = "~/.local/bin/base"
+  installed_at = "2026-06-03T14:00:00-05:00"
+
+  [components.paul]
+  version = "1.4.0"
+  path = "~/.claude/commands/paul"
+  installed_at = "2026-06-03T14:00:00-05:00"
+
+  [components.seed]
+  version = "1.0.0"
+  path = "~/.claude/commands/seed"
+  installed_at = "2026-06-03T14:00:00-05:00"
+
+  [components.skillsmith]
+  version = "1.0.0"
+  path = "~/.claude/commands/skillsmith"
+  installed_at = "2026-06-03T14:00:00-05:00"
+
+  [update_check]
+  last_checked = "2026-06-03T14:00:00-05:00"
+  ttl_seconds = 604800  # 7 days
+  endpoint = "https://chrisai.cv/agentic-os/versions.json"
+  pending_update = ""          # empty = no pending, else "PAUL 1.4.0→1.5.0, ..."
+  dismissed_until = ""         # empty = not dismissed, else ISO timestamp
+  ```
+- `base install` writes/updates manifest.toml on every install
+- `base install --full` creates the full manifest with all 4 components
+- Manifest is the single source of truth for what's installed
+
+### Phase 11: Update Check & Persistent Banner
+
+**Goal:** Weekly version check against CDN. Once an update is detected, banner persists on EVERY session start until the user either updates or snoozes (24h). Two exit paths: `base update` or `base update --snooze`.
+**Depends on:** Phase 10 (manifest must exist)
+
+**Scope:**
+- In session_start handler, after existing signals:
+  0. Read `~/.base-gbl/manifest.toml`
+  1. **If `install_channel == "direct"` → skip entire banner/promo pipeline.** Still run version check silently (write `pending_update` to manifest for `base update --check`), but never inject session output. Creator-installed instances get zero noise.
+  2. **If `install_channel == "community"` (or absent/unknown) → full pipeline:**
+  3. **If `pending_update` is set AND `dismissed_until` is empty or expired:**
+     - Inject banner EVERY session:
+       ```
+       ═══════════════════════════════════════
+       🔄 Agentic OS update available
+          {pending_update contents}
+
+          Run: base update
+          Snooze 24h: base update --snooze
+          Chris AI Systems · https://chrisai.cv/skool
+       ═══════════════════════════════════════
+       ```
+     - Do NOT make an HTTP call — already know updates exist
+     - Skip to end
+  3. **If `pending_update` is set AND `dismissed_until` is in the future:**
+     - Skip silently (user snoozed, respect it)
+  4. **If no `pending_update`:**
+     - Check `last_checked` timestamp
+     - If now - last_checked < 604800 seconds (7 days) → skip silently
+     - If >= 7 days → HTTP GET to `update_check.endpoint`
+       - Timeout: 3 seconds (never block session start)
+       - On failure (timeout, offline, 404, parse error): skip silently, do NOT update last_checked (retry next session)
+     - On success: compare `versions.json` versions vs `components.*.version`
+       - All current → update `last_checked`, clear `pending_update`, no output
+       - Updates found → write `pending_update` string (e.g., "PAUL 1.4.0→1.5.0, SEED 1.0.0→1.1.0"), update `last_checked`, inject banner
+  5. If `versions.json` contains a `message` field → append to banner (promotional channel)
+- `base update` → installs updates, clears `pending_update` and `dismissed_until`
+- `base update --snooze` → sets `dismissed_until` = now + 24h, does NOT clear `pending_update`
+- Traffic math: 1000 users × 1 check/week = ~143 checks/day → CDN-cached static file, origin sees ~24 refreshes/day max
+- Banner frequency: every session until resolved — no passive decay
+- `versions.json` format:
+  ```json
+  {
+    "base": "0.2.0",
+    "paul": "1.5.0",
+    "seed": "1.0.0",
+    "skillsmith": "1.0.0",
+    "message": ""
+  }
+  ```
+
+### Phase 12: `base install --full` and `base update`
+
+**Goal:** Single command installs the full Agentic OS. `base update` pulls latest versions of outdated components.
+**Depends on:** Phase 10 + 11 (manifest + version check)
+
+**Scope:**
+- `base install --full`:
+  1. Install BASE binary (existing logic)
+  2. Wire hooks (existing logic)
+  3. Download PAUL/SEED/SKILLSMITH from GitHub releases (tar.gz of skill files)
+  4. Extract to `~/.claude/commands/{paul,seed,skillsmith}/`
+  5. Write full manifest.toml
+  6. Print Agentic OS welcome banner with chrisai.cv/skool link
+- `base update`:
+  1. Fetch versions.json (force, ignore TTL)
+  2. Compare against manifest
+  3. Download + install only outdated components
+  4. Update manifest versions + last_checked
+  5. Report what was updated
+- `base update --check`:
+  1. Fetch versions.json, report status, don't install anything
+- Cross-platform: GitHub release assets include pre-built BASE binaries for linux-x86_64, darwin-x86_64, darwin-aarch64, windows-x86_64
+
+### Phase 13: Unofficial Install Detection & Attribution
+
+**Goal:** If someone installs frameworks outside the official channel, BASE detects it and shows a gentle redirect. Provenance verification.
+**Depends on:** Phase 10 (manifest is what "official" means)
+
+**Scope:**
+- **Skip entirely if `install_channel == "direct"`.** Creator installs never see unofficial detection messaging.
+- For `community` channel (or absent/unknown manifest):
+- On session start, if BASE detects PAUL/SEED/SKILLSMITH commands exist but NO manifest.toml:
+  ```
+  ℹ️ Agentic OS frameworks detected without official manifest.
+  For updates, support, and training from the creator:
+  https://chrisai.cv/skool
+
+  Run: base install --full (to register and enable auto-updates)
+  ```
+- If manifest exists but `source` field is not `https://chrisai.cv/skool`:
+  Same message — gentle, non-blocking redirect
+- If frameworks exist with `skillsmith_source` / `seed_source` / `paul.source` fields in their configs pointing to chrisai.cv/skool but no manifest: suggest `base install --full` to complete the setup
+- Never block. Never hostile. Just persistent, polite awareness.
+
+---
 *Roadmap created: 2026-05-29*
-*Last updated: 2026-06-03 — Phase 9 added (PAUL Integration Layer)*
+*Last updated: 2026-06-03 — Phase 10 complete*

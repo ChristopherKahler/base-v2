@@ -6,6 +6,7 @@ pub mod domain;
 pub mod extract;
 pub mod hook;
 pub mod install;
+pub mod manifest;
 pub mod ontology;
 pub mod operator;
 pub mod scaffold;
