@@ -121,6 +121,16 @@ export async function deleteReminder(iri) {
   } catch { return null; }
 }
 
+export async function getLedger() {
+  try { const r = await fetch(`${BASE}/api/ops/ledger`); return r.ok ? await r.json() : []; }
+  catch { return []; }
+}
+
+export async function getCostSummary(project = '') {
+  try { const r = await fetch(`${BASE}/api/ops/cost-summary?project=${encodeURIComponent(project)}`); return r.ok ? await r.json() : null; }
+  catch { return null; }
+}
+
 export async function updateProjectStatus(iri, status) {
   try {
     const r = await fetch(`${BASE}/api/ops/project/${encodeURIComponent(iri)}/status`, {

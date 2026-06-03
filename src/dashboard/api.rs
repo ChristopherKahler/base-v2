@@ -937,6 +937,186 @@ pub async fn update_project_status(
     Ok(Json(serde_json::json!({ "iri": iri, "status": body.status })))
 }
 
+// ─── Ledger API (cost attribution) ──────────────────────────
+
+#[derive(Serialize)]
+pub struct OpsLedgerEntry {
+    pub iri: String,
+    pub action: String,
+    pub phase: String,
+    pub plan: String,
+    pub timestamp: String,
+    pub note: String,
+    pub project: String,
+    pub session_tokens: Option<u64>,
+    pub session_cost: Option<f64>,
+}
+
+pub async fn ops_ledger(
+    State(state): State<Arc<AppState>>,
+) -> Json<Vec<OpsLedgerEntry>> {
+    let ns = &state.config.namespace;
+    let p = &ns.prefix;
+    let pfx = crate::crud::prefixes(ns);
+    let store = state.store.lock().unwrap();
+
+    // Query all LedgerEntry triples
+    let sparql = format!(
+        "{pfx}\nSELECT ?e ?action ?phase ?plan ?ts ?note ?proj WHERE {{\n\
+           GRAPH ?g {{ ?e rdf:type {p}:LedgerEntry .\n\
+             ?e {p}:action ?action .\n\
+             ?e {p}:timestamp ?ts .\n\
+             OPTIONAL {{ ?e {p}:phase ?phase }}\n\
+             OPTIONAL {{ ?e {p}:plan ?plan }}\n\
+             OPTIONAL {{ ?e {p}:note ?note }}\n\
+             OPTIONAL {{ ?e {p}:belongsTo ?projIri . ?projIri {p}:name ?proj }}\n\
+           }}\n\
+         }} ORDER BY DESC(?ts)"
+    );
+
+    let mut entries = Vec::new();
+    if let Ok(oxigraph::sparql::QueryResults::Solutions(solutions)) = store.query(&sparql) {
+        for row in solutions.flatten() {
+            entries.push(OpsLedgerEntry {
+                iri: row.get("e").map(|t| term_str(t.into())).unwrap_or_default(),
+                action: row.get("action").map(|t| term_str(t.into())).unwrap_or_default(),
+                phase: row.get("phase").map(|t| term_str(t.into())).unwrap_or_default(),
+                plan: row.get("plan").map(|t| term_str(t.into())).unwrap_or_default(),
+                timestamp: row.get("ts").map(|t| term_str(t.into())).unwrap_or_default(),
+                note: row.get("note").map(|t| term_str(t.into())).unwrap_or_default(),
+                project: row.get("proj").map(|t| term_str(t.into())).unwrap_or_default(),
+                session_tokens: None,
+                session_cost: None,
+            });
+        }
+    }
+
+    // Join with session JSONL data via timestamp matching
+    drop(store); // release lock before I/O-heavy session parsing
+    let events = collect_all_events(365);
+    if !events.is_empty() {
+        // Group events by session (cwd acts as session grouping key)
+        // Each event has a timestamp — find sessions whose time range contains the ledger entry
+        for entry in &mut entries {
+            if let Ok(entry_dt) = chrono::DateTime::parse_from_rfc3339(&entry.timestamp)
+                .or_else(|_| chrono::DateTime::parse_from_str(&entry.timestamp, "%Y-%m-%dT%H:%M:%S%:z"))
+            {
+                let entry_ts = entry_dt.timestamp();
+                // Find events within ±30 minutes of this ledger entry
+                let window = 30 * 60; // 30 minutes
+                let mut matched_tokens: u64 = 0;
+                let mut matched_cost: f64 = 0.0;
+                let mut found = false;
+
+                for ev in &events {
+                    if let Ok(ev_dt) = chrono::DateTime::parse_from_rfc3339(&ev.timestamp)
+                        .or_else(|_| chrono::DateTime::parse_from_str(&ev.timestamp, "%Y-%m-%dT%H:%M:%S%:z"))
+                    {
+                        let diff = (ev_dt.timestamp() - entry_ts).abs();
+                        if diff <= window {
+                            matched_tokens += ev.input_tokens + ev.output_tokens;
+                            matched_cost += ev.cost;
+                            found = true;
+                        }
+                    }
+                }
+
+                if found {
+                    entry.session_tokens = Some(matched_tokens);
+                    entry.session_cost = Some((matched_cost * 100.0).round() / 100.0);
+                }
+            }
+        }
+    }
+
+    Json(entries)
+}
+
+#[derive(Serialize)]
+pub struct PhaseActionCost {
+    pub action: String,
+    pub cost: f64,
+    pub count: u32,
+}
+
+#[derive(Serialize)]
+pub struct PhaseCost {
+    pub phase: String,
+    pub total_cost: f64,
+    pub session_count: u32,
+    pub actions: Vec<PhaseActionCost>,
+}
+
+#[derive(Serialize)]
+pub struct CostSummary {
+    pub project: String,
+    pub total_cost: f64,
+    pub total_entries: u32,
+    pub phases: Vec<PhaseCost>,
+}
+
+#[derive(Deserialize)]
+pub struct CostQuery {
+    pub project: Option<String>,
+}
+
+pub async fn ops_cost_summary(
+    Query(query): Query<CostQuery>,
+    State(state): State<Arc<AppState>>,
+) -> Json<CostSummary> {
+    // Get ledger entries (reuse the handler logic)
+    let ledger = ops_ledger(State(state)).await.0;
+
+    let project_filter = query.project.unwrap_or_default();
+    let filtered: Vec<&OpsLedgerEntry> = if project_filter.is_empty() {
+        ledger.iter().collect()
+    } else {
+        ledger.iter().filter(|e| e.project == project_filter).collect()
+    };
+
+    // Group by phase
+    let mut phase_map: std::collections::BTreeMap<String, Vec<&OpsLedgerEntry>> = std::collections::BTreeMap::new();
+    for entry in &filtered {
+        let key = if entry.phase.is_empty() { "unknown".to_string() } else { entry.phase.clone() };
+        phase_map.entry(key).or_default().push(entry);
+    }
+
+    let mut phases = Vec::new();
+    let mut total_cost = 0.0;
+
+    for (phase, entries) in &phase_map {
+        let mut action_map: std::collections::BTreeMap<String, (f64, u32)> = std::collections::BTreeMap::new();
+        let mut phase_cost = 0.0;
+
+        for e in entries {
+            let cost = e.session_cost.unwrap_or(0.0);
+            phase_cost += cost;
+            let entry = action_map.entry(e.action.clone()).or_insert((0.0, 0));
+            entry.0 += cost;
+            entry.1 += 1;
+        }
+
+        total_cost += phase_cost;
+        phases.push(PhaseCost {
+            phase: phase.clone(),
+            total_cost: (phase_cost * 100.0).round() / 100.0,
+            session_count: entries.len() as u32,
+            actions: action_map.into_iter().map(|(action, (cost, count))| PhaseActionCost {
+                action,
+                cost: (cost * 100.0).round() / 100.0,
+                count,
+            }).collect(),
+        });
+    }
+
+    Json(CostSummary {
+        project: project_filter,
+        total_cost: (total_cost * 100.0).round() / 100.0,
+        total_entries: filtered.len() as u32,
+        phases,
+    })
+}
+
 // ─── Task status update ─────────────────────────────────────
 
 pub async fn update_task_status(

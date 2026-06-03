@@ -1,4 +1,5 @@
 pub mod frontmatter;
+pub mod ledger;
 pub mod paul_json;
 pub mod paul_toml;
 
@@ -143,6 +144,12 @@ pub fn sync(cwd: &Path, config: &BaseConfig, incremental: bool) -> Result<SyncRe
             .with_context(|| format!("inserting triples for {rel_path}"))?;
 
         report.extracted += 1;
+    }
+
+    // Extract ledger.toml (append-only session ledger for cost attribution)
+    let ledger_count = ledger::extract_ledger(cwd, &store, ns, &graph_iri);
+    if ledger_count > 0 {
+        report.extracted += ledger_count;
     }
 
     crate::store::write_back(&store, &trig_path)?;

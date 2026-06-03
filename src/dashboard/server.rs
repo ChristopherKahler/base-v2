@@ -76,6 +76,9 @@ pub async fn start(port: u16, cwd: PathBuf) {
         .route("/api/ops/reminder/{iri}", delete(super::api::delete_reminder))
         // Project status
         .route("/api/ops/project/{iri}/status", patch(super::api::update_project_status))
+        // Ledger (cost attribution)
+        .route("/api/ops/ledger", get(super::api::ops_ledger))
+        .route("/api/ops/cost-summary", get(super::api::ops_cost_summary))
         // Usage Analytics
         .route("/api/usage/summary", get(super::api::usage_summary))
         .route("/api/usage/sessions", get(super::api::usage_sessions))
