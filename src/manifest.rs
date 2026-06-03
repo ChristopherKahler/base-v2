@@ -3,10 +3,12 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use sha2::{Sha256, Digest};
 
 // ─── Activation Key ─────────────────────────────────────────
-// Replaced before release builds. Distributed via Skool classroom only.
-const ACTIVATION_KEY: &str = "PLACEHOLDER_REPLACE_BEFORE_RELEASE";
+// SHA-256 hash of the activation key. The actual key never appears in source or binary.
+// Distributed via Skool classroom only.
+const ACTIVATION_KEY_HASH: &str = "389858f21ff026eb17ed26be72d02929d26c0485cbfe2e8e63e980ee3df49d7c";
 
 // ─── Manifest Structs ───────────────────────────────────────
 
@@ -135,10 +137,18 @@ impl Manifest {
         Ok(())
     }
 
-    /// Check if this install is activated (token matches compiled key).
+    /// Check if this install is activated (token hash matches compiled hash).
     pub fn is_activated(&self) -> bool {
-        !self.chrisai.token.is_empty() && self.chrisai.token == ACTIVATION_KEY
+        !self.chrisai.token.is_empty() && hash_key(&self.chrisai.token) == ACTIVATION_KEY_HASH
     }
+}
+
+/// SHA-256 hash a key string, return hex.
+fn hash_key(key: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(key.trim().as_bytes());
+    let result = hasher.finalize();
+    result.iter().map(|b| format!("{:02x}", b)).collect()
 }
 
 // ─── Component Detection ────────────────────────────────────
@@ -210,7 +220,7 @@ fn read_package_version(dir: &Path) -> Option<String> {
 pub fn activate(key: &str) -> Result<()> {
     let key = key.trim();
 
-    if key != ACTIVATION_KEY {
+    if hash_key(key) != ACTIVATION_KEY_HASH {
         println!("════════════════════════════════════════");
         println!("⛔ Invalid activation key.\n");
         println!("Get your key at https://chrisai.cv/skool");
@@ -437,15 +447,12 @@ mod tests {
     }
 
     #[test]
-    fn is_activated_with_valid_token() {
-        let manifest = Manifest {
-            chrisai: ChrisAiSection {
-                token: ACTIVATION_KEY.to_string(),
-                ..Default::default()
-            },
-            ..Default::default()
-        };
-        assert!(manifest.is_activated());
+    fn hash_key_is_deterministic() {
+        let h1 = hash_key("test-input");
+        let h2 = hash_key("test-input");
+        assert_eq!(h1, h2);
+        assert_eq!(h1.len(), 64); // SHA-256 = 64 hex chars
+        assert_ne!(h1, hash_key("different-input"));
     }
 
     #[test]
