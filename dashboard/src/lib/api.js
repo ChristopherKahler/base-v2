@@ -63,9 +63,72 @@ export async function getDecisions() {
   catch { return []; }
 }
 
+export async function createDecision(name, rationale, domain) {
+  try {
+    const r = await fetch(`${BASE}/api/ops/decision`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, rationale, domain: domain || undefined }),
+    });
+    return r.ok ? await r.json() : null;
+  } catch { return null; }
+}
+
+export async function updateDecision(iri, fields) {
+  try {
+    const r = await fetch(`${BASE}/api/ops/decision/${encodeURIComponent(iri)}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(fields),
+    });
+    return r.ok ? await r.json() : null;
+  } catch { return null; }
+}
+
+export async function deleteDecision(iri) {
+  try {
+    const r = await fetch(`${BASE}/api/ops/decision/${encodeURIComponent(iri)}`, { method: 'DELETE' });
+    return r.ok ? await r.json() : null;
+  } catch { return null; }
+}
+
 export async function getReminders() {
   try { const r = await fetch(`${BASE}/api/ops/reminders`); return r.ok ? await r.json() : []; }
   catch { return []; }
+}
+
+export async function createReminder(name, due) {
+  try {
+    const r = await fetch(`${BASE}/api/ops/reminder`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, due }),
+    });
+    return r.ok ? await r.json() : null;
+  } catch { return null; }
+}
+
+export async function completeReminder(iri) {
+  try {
+    const r = await fetch(`${BASE}/api/ops/reminder/${encodeURIComponent(iri)}/complete`, {
+      method: 'PATCH',
+    });
+    return r.ok ? await r.json() : null;
+  } catch { return null; }
+}
+
+export async function deleteReminder(iri) {
+  try {
+    const r = await fetch(`${BASE}/api/ops/reminder/${encodeURIComponent(iri)}`, { method: 'DELETE' });
+    return r.ok ? await r.json() : null;
+  } catch { return null; }
+}
+
+export async function updateProjectStatus(iri, status) {
+  try {
+    const r = await fetch(`${BASE}/api/ops/project/${encodeURIComponent(iri)}/status`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    });
+    return r.ok ? await r.json() : null;
+  } catch { return null; }
 }
 
 export function createSessionWs() {
@@ -105,12 +168,29 @@ export async function reloadGraph() {
   } catch { return null; }
 }
 
-export async function createTask(name, project, status = 'active') {
+export async function createTask(name, project, priority = 'normal', description = '') {
   try {
     const r = await fetch(`${BASE}/api/ops/task`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, project, status }),
+      body: JSON.stringify({ name, project, status: 'active', priority, description: description || undefined }),
     });
+    return r.ok ? await r.json() : null;
+  } catch { return null; }
+}
+
+export async function updateTask(iri, fields) {
+  try {
+    const r = await fetch(`${BASE}/api/ops/task/${encodeURIComponent(iri)}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(fields),
+    });
+    return r.ok ? await r.json() : null;
+  } catch { return null; }
+}
+
+export async function deleteTask(iri) {
+  try {
+    const r = await fetch(`${BASE}/api/ops/task/${encodeURIComponent(iri)}`, { method: 'DELETE' });
     return r.ok ? await r.json() : null;
   } catch { return null; }
 }

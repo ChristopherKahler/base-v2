@@ -86,19 +86,24 @@ pub struct OpsTask {
     pub priority: String,
     pub project: String,
     pub milestone: String,
+    pub description: String,
 }
 
 #[derive(Serialize)]
 pub struct OpsDecision {
+    pub iri: String,
     pub name: String,
     pub rationale: String,
+    pub domain: String,
     pub created_at: String,
 }
 
 #[derive(Serialize)]
 pub struct OpsReminder {
+    pub iri: String,
     pub name: String,
     pub due: String,
+    pub status: String,
     pub overdue: bool,
 }
 
@@ -563,10 +568,11 @@ pub async fn ops_projects(State(state): State<Arc<AppState>>) -> Json<Vec<OpsPro
 
             // Get tasks for this project
             let task_sparql = format!(
-                "{pfx}\nSELECT ?t ?tname ?tstatus ?tpri WHERE {{\n\
+                "{pfx}\nSELECT ?t ?tname ?tstatus ?tpri ?tdesc WHERE {{\n\
                    GRAPH ?g {{ <{iri}> {p}:hasTask ?t . ?t {p}:name ?tname .\n\
                      OPTIONAL {{ ?t {p}:status ?tstatus }}\n\
                      OPTIONAL {{ ?t {p}:priority ?tpri }}\n\
+                     OPTIONAL {{ ?t {p}:description ?tdesc }}\n\
                    }}\n\
                  }}"
             );
@@ -580,6 +586,7 @@ pub async fn ops_projects(State(state): State<Arc<AppState>>) -> Json<Vec<OpsPro
                         priority: trow.get("tpri").map(|t| term_str(t.into())).unwrap_or_else(|| "normal".into()),
                         project: name.clone(),
                         milestone: String::new(),
+                        description: trow.get("tdesc").map(|t| term_str(t.into())).unwrap_or_default(),
                     });
                 }
             }
@@ -598,10 +605,11 @@ pub async fn ops_decisions(State(state): State<Arc<AppState>>) -> Json<Vec<OpsDe
     let store = state.store.lock().unwrap();
 
     let sparql = format!(
-        "{pfx}\nSELECT ?name ?rationale ?created WHERE {{\n\
+        "{pfx}\nSELECT ?d ?name ?rationale ?created ?dname WHERE {{\n\
            GRAPH ?g {{ ?d rdf:type {p}:Decision . ?d {p}:name ?name .\n\
              OPTIONAL {{ ?d {p}:rationale ?rationale }}\n\
              OPTIONAL {{ ?d {p}:createdAt ?created }}\n\
+             OPTIONAL {{ ?d {p}:hasDomain ?dom . ?dom {p}:name ?dname }}\n\
            }}\n\
          }} ORDER BY DESC(?created)"
     );
@@ -611,8 +619,10 @@ pub async fn ops_decisions(State(state): State<Arc<AppState>>) -> Json<Vec<OpsDe
     if let Ok(oxigraph::sparql::QueryResults::Solutions(solutions)) = store.query(&sparql) {
         for row in solutions.flatten() {
             decisions.push(OpsDecision {
+                iri: row.get("d").map(|t| term_str(t.into())).unwrap_or_default(),
                 name: row.get("name").map(|t| term_str(t.into())).unwrap_or_default(),
                 rationale: row.get("rationale").map(|t| term_str(t.into())).unwrap_or_default(),
+                domain: row.get("dname").map(|t| term_str(t.into())).unwrap_or_default(),
                 created_at: row.get("created").map(|t| term_str(t.into())).unwrap_or_default(),
             });
         }
@@ -628,9 +638,10 @@ pub async fn ops_reminders(State(state): State<Arc<AppState>>) -> Json<Vec<OpsRe
     let store = state.store.lock().unwrap();
 
     let sparql = format!(
-        "{pfx}\nSELECT ?name ?due WHERE {{\n\
+        "{pfx}\nSELECT ?r ?name ?due ?rstatus WHERE {{\n\
            GRAPH ?g {{ ?r rdf:type {p}:Reminder . ?r {p}:name ?name .\n\
              OPTIONAL {{ ?r {p}:due ?due }}\n\
+             OPTIONAL {{ ?r {p}:status ?rstatus }}\n\
            }}\n\
          }} ORDER BY ?due"
     );
@@ -641,15 +652,289 @@ pub async fn ops_reminders(State(state): State<Arc<AppState>>) -> Json<Vec<OpsRe
     if let Ok(oxigraph::sparql::QueryResults::Solutions(solutions)) = store.query(&sparql) {
         for row in solutions.flatten() {
             let due = row.get("due").map(|t| term_str(t.into())).unwrap_or_default();
-            let overdue = !due.is_empty() && due < today;
+            let status = row.get("rstatus").map(|t| term_str(t.into())).unwrap_or_else(|| "active".into());
+            let overdue = status != "completed" && !due.is_empty() && due < today;
             reminders.push(OpsReminder {
+                iri: row.get("r").map(|t| term_str(t.into())).unwrap_or_default(),
                 name: row.get("name").map(|t| term_str(t.into())).unwrap_or_default(),
-                due, overdue,
+                due, status, overdue,
             });
         }
     }
 
     Json(reminders)
+}
+
+// ─── Decision CRUD ──────────────────────────────────────────
+
+#[derive(Deserialize)]
+pub struct CreateDecisionBody {
+    pub name: String,
+    pub rationale: Option<String>,
+    pub domain: Option<String>,
+}
+
+pub async fn create_decision(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<CreateDecisionBody>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let ns = &state.config.namespace;
+    let p = &ns.prefix;
+    let pfx = crate::crud::prefixes(ns);
+    let slug = crate::crud::slugify(&body.name);
+    let iri = crate::crud::build_iri(ns, "decision", &slug);
+    let graph = crate::crud::workspace_graph_iri(ns, &crate::crud::workspace_slug(&state.cwd));
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let rationale = body.rationale.as_deref().unwrap_or("");
+
+    let mut domain_triple = String::new();
+    if let Some(ref domain) = body.domain {
+        if !domain.is_empty() {
+            let domain_slug = crate::crud::slugify(domain);
+            let domain_iri = crate::crud::build_iri(ns, "domain", &domain_slug);
+            domain_triple = format!("<{iri}> {p}:hasDomain <{domain_iri}> .\n");
+        }
+    }
+
+    let mut store = state.store.lock().unwrap();
+    let insert = format!(
+        "{pfx}\nINSERT DATA {{\n  GRAPH <{graph}> {{\n\
+           <{iri}> rdf:type {p}:Decision .\n\
+           <{iri}> {p}:name \"{}\" .\n\
+           <{iri}> {p}:rationale \"{}\" .\n\
+           <{iri}> {p}:createdAt \"{today}\" .\n\
+           {domain_triple}\
+         }}\n}}",
+        body.name.replace('"', "\\\""),
+        rationale.replace('"', "\\\"").replace('\n', "\\n"),
+    );
+    store.update(&insert).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    crate::store::write_back(&store, &state.trig_path)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(Json(serde_json::json!({ "iri": iri, "name": body.name })))
+}
+
+#[derive(Deserialize)]
+pub struct UpdateDecisionBody {
+    pub name: Option<String>,
+    pub rationale: Option<String>,
+    pub domain: Option<String>,
+}
+
+pub async fn update_decision(
+    Path(iri): Path<String>,
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<UpdateDecisionBody>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let iri = urldecode(&iri);
+    let ns = &state.config.namespace;
+    let p = &ns.prefix;
+    let pfx = crate::crud::prefixes(ns);
+    let mut store = state.store.lock().unwrap();
+
+    if let Some(ref name) = body.name {
+        let u = format!(
+            "{pfx}\nDELETE {{ GRAPH ?g {{ <{iri}> {p}:name ?old }} }}\n\
+             INSERT {{ GRAPH ?g {{ <{iri}> {p}:name \"{}\" }} }}\n\
+             WHERE  {{ GRAPH ?g {{ <{iri}> {p}:name ?old }} }}",
+            name.replace('"', "\\\"")
+        );
+        store.update(&u).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    }
+    if let Some(ref rationale) = body.rationale {
+        let escaped = rationale.replace('"', "\\\"").replace('\n', "\\n");
+        let del = format!(
+            "{pfx}\nDELETE {{ GRAPH ?g {{ <{iri}> {p}:rationale ?old }} }}\n\
+             WHERE  {{ GRAPH ?g {{ <{iri}> {p}:rationale ?old }} }}"
+        );
+        let _ = store.update(&del);
+        if !rationale.is_empty() {
+            let graph = crate::crud::workspace_graph_iri(ns, &crate::crud::workspace_slug(&state.cwd));
+            let ins = format!(
+                "{pfx}\nINSERT DATA {{ GRAPH <{graph}> {{ <{iri}> {p}:rationale \"{escaped}\" }} }}"
+            );
+            store.update(&ins).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        }
+    }
+    if let Some(ref domain) = body.domain {
+        // Remove old domain edge
+        let del = format!(
+            "{pfx}\nDELETE {{ GRAPH ?g {{ <{iri}> {p}:hasDomain ?old }} }}\n\
+             WHERE  {{ GRAPH ?g {{ <{iri}> {p}:hasDomain ?old }} }}"
+        );
+        let _ = store.update(&del);
+        if !domain.is_empty() {
+            let domain_slug = crate::crud::slugify(domain);
+            let domain_iri = crate::crud::build_iri(ns, "domain", &domain_slug);
+            let graph = crate::crud::workspace_graph_iri(ns, &crate::crud::workspace_slug(&state.cwd));
+            let ins = format!(
+                "{pfx}\nINSERT DATA {{ GRAPH <{graph}> {{ <{iri}> {p}:hasDomain <{domain_iri}> }} }}"
+            );
+            store.update(&ins).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        }
+    }
+
+    crate::store::write_back(&store, &state.trig_path)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(Json(serde_json::json!({ "iri": iri, "updated": true })))
+}
+
+pub async fn delete_decision(
+    Path(iri): Path<String>,
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let iri = urldecode(&iri);
+    let pfx = crate::crud::prefixes(&state.config.namespace);
+    let mut store = state.store.lock().unwrap();
+
+    let del = format!(
+        "{pfx}\nDELETE {{ GRAPH ?g {{ <{iri}> ?p ?o }} }}\n\
+         WHERE  {{ GRAPH ?g {{ <{iri}> ?p ?o }} }}"
+    );
+    store.update(&del).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let del2 = format!(
+        "{pfx}\nDELETE {{ GRAPH ?g {{ ?s ?p <{iri}> }} }}\n\
+         WHERE  {{ GRAPH ?g {{ ?s ?p <{iri}> }} }}"
+    );
+    store.update(&del2).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    crate::store::write_back(&store, &state.trig_path)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(Json(serde_json::json!({ "deleted": true, "iri": iri })))
+}
+
+// ─── Reminder CRUD ──────────────────────────────────────────
+
+#[derive(Deserialize)]
+pub struct CreateReminderBody {
+    pub name: String,
+    pub due: Option<String>,
+}
+
+pub async fn create_reminder(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<CreateReminderBody>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let ns = &state.config.namespace;
+    let p = &ns.prefix;
+    let pfx = crate::crud::prefixes(ns);
+    let slug = crate::crud::slugify(&body.name);
+    let iri = crate::crud::build_iri(ns, "reminder", &slug);
+    let graph = crate::crud::workspace_graph_iri(ns, &crate::crud::workspace_slug(&state.cwd));
+
+    let mut due_triple = String::new();
+    if let Some(ref due) = body.due {
+        if !due.is_empty() {
+            due_triple = format!("<{iri}> {p}:due \"{due}\" .\n");
+        }
+    }
+
+    let mut store = state.store.lock().unwrap();
+    let insert = format!(
+        "{pfx}\nINSERT DATA {{\n  GRAPH <{graph}> {{\n\
+           <{iri}> rdf:type {p}:Reminder .\n\
+           <{iri}> {p}:name \"{}\" .\n\
+           <{iri}> {p}:status \"active\" .\n\
+           {due_triple}\
+         }}\n}}",
+        body.name.replace('"', "\\\""),
+    );
+    store.update(&insert).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    crate::store::write_back(&store, &state.trig_path)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(Json(serde_json::json!({ "iri": iri, "name": body.name })))
+}
+
+pub async fn complete_reminder(
+    Path(iri): Path<String>,
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let iri = urldecode(&iri);
+    let ns = &state.config.namespace;
+    let p = &ns.prefix;
+    let pfx = crate::crud::prefixes(ns);
+    let mut store = state.store.lock().unwrap();
+
+    // Delete old status, insert completed
+    let del = format!(
+        "{pfx}\nDELETE {{ GRAPH ?g {{ <{iri}> {p}:status ?old }} }}\n\
+         WHERE  {{ GRAPH ?g {{ <{iri}> {p}:status ?old }} }}"
+    );
+    let _ = store.update(&del);
+    let graph = crate::crud::workspace_graph_iri(ns, &crate::crud::workspace_slug(&state.cwd));
+    let ins = format!(
+        "{pfx}\nINSERT DATA {{ GRAPH <{graph}> {{ <{iri}> {p}:status \"completed\" }} }}"
+    );
+    store.update(&ins).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    crate::store::write_back(&store, &state.trig_path)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(Json(serde_json::json!({ "iri": iri, "status": "completed" })))
+}
+
+pub async fn delete_reminder(
+    Path(iri): Path<String>,
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let iri = urldecode(&iri);
+    let pfx = crate::crud::prefixes(&state.config.namespace);
+    let mut store = state.store.lock().unwrap();
+
+    let del = format!(
+        "{pfx}\nDELETE {{ GRAPH ?g {{ <{iri}> ?p ?o }} }}\n\
+         WHERE  {{ GRAPH ?g {{ <{iri}> ?p ?o }} }}"
+    );
+    store.update(&del).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let del2 = format!(
+        "{pfx}\nDELETE {{ GRAPH ?g {{ ?s ?p <{iri}> }} }}\n\
+         WHERE  {{ GRAPH ?g {{ ?s ?p <{iri}> }} }}"
+    );
+    store.update(&del2).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    crate::store::write_back(&store, &state.trig_path)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(Json(serde_json::json!({ "deleted": true, "iri": iri })))
+}
+
+// ─── Project Status Update ──────────────────────────────────
+
+pub async fn update_project_status(
+    Path(iri): Path<String>,
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<UpdateStatusBody>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let iri = urldecode(&iri);
+    let ns = &state.config.namespace;
+    let p = &ns.prefix;
+    let pfx = crate::crud::prefixes(ns);
+
+    let valid = ["active", "blocked", "completed", "pending", "deferred"];
+    if !valid.contains(&body.status.as_str()) {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    let mut store = state.store.lock().unwrap();
+
+    let check = format!("{pfx}\nASK {{ GRAPH ?g {{ <{iri}> rdf:type ?t }} }}");
+    match store.query(&check) {
+        Ok(oxigraph::sparql::QueryResults::Boolean(true)) => {}
+        _ => return Err(StatusCode::NOT_FOUND),
+    }
+
+    let update = format!(
+        "{pfx}\n\
+         DELETE {{ GRAPH ?g {{ <{iri}> {p}:status ?old }} }}\n\
+         INSERT {{ GRAPH ?g {{ <{iri}> {p}:status \"{}\" }} }}\n\
+         WHERE  {{ GRAPH ?g {{ <{iri}> {p}:status ?old }} }}",
+        body.status
+    );
+    store.update(&update).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    crate::store::write_back(&store, &state.trig_path)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(Json(serde_json::json!({ "iri": iri, "status": body.status })))
 }
 
 // ─── Task status update ─────────────────────────────────────
@@ -1218,6 +1503,8 @@ pub struct CreateTaskBody {
     pub name: String,
     pub project: String,
     pub status: Option<String>,
+    pub priority: Option<String>,
+    pub description: Option<String>,
 }
 
 pub async fn create_task(
@@ -1228,10 +1515,22 @@ pub async fn create_task(
     let p = &ns.prefix;
     let pfx = crate::crud::prefixes(ns);
     let status = body.status.as_deref().unwrap_or("active");
+    let priority = body.priority.as_deref().unwrap_or("normal");
     let slug = crate::crud::slugify(&body.name);
     let task_iri = crate::crud::build_iri(ns, "task", &slug);
     let project_slug = crate::crud::slugify(&body.project);
     let project_iri = crate::crud::build_iri(ns, "project", &project_slug);
+
+    let mut extra_triples = String::new();
+    extra_triples.push_str(&format!("<{task_iri}> {p}:priority \"{priority}\" .\n"));
+    if let Some(ref desc) = body.description {
+        if !desc.is_empty() {
+            extra_triples.push_str(&format!(
+                "           <{task_iri}> {p}:description \"{}\" .\n",
+                desc.replace('"', "\\\"").replace('\n', "\\n")
+            ));
+        }
+    }
 
     let mut store = state.store.lock().unwrap();
 
@@ -1240,6 +1539,7 @@ pub async fn create_task(
            <{task_iri}> rdf:type {p}:Task .\n\
            <{task_iri}> {p}:name \"{name}\" .\n\
            <{task_iri}> {p}:status \"{status}\" .\n\
+           {extra_triples}\
            <{project_iri}> {p}:hasTask <{task_iri}> .\n\
            <{task_iri}> {p}:belongsTo <{project_iri}> .\n\
          }}\n}}",
@@ -1251,7 +1551,133 @@ pub async fn create_task(
     crate::store::write_back(&store, &state.trig_path)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    Ok(Json(serde_json::json!({ "iri": task_iri, "name": body.name, "status": status })))
+    Ok(Json(serde_json::json!({ "iri": task_iri, "name": body.name, "status": status, "priority": priority })))
+}
+
+// ─── Task Update (fields) ───────────────────────────────────
+
+#[derive(Deserialize)]
+pub struct UpdateTaskBody {
+    pub name: Option<String>,
+    pub priority: Option<String>,
+    pub description: Option<String>,
+}
+
+pub async fn update_task(
+    Path(iri): Path<String>,
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<UpdateTaskBody>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let iri = urldecode(&iri);
+    let ns = &state.config.namespace;
+    let p = &ns.prefix;
+    let pfx = crate::crud::prefixes(ns);
+
+    let mut store = state.store.lock().unwrap();
+
+    // Verify entity exists
+    let check = format!(
+        "{pfx}\nASK {{ GRAPH ?g {{ <{iri}> rdf:type ?t }} }}"
+    );
+    match store.query(&check) {
+        Ok(oxigraph::sparql::QueryResults::Boolean(true)) => {}
+        _ => return Err(StatusCode::NOT_FOUND),
+    }
+
+    // Update each provided field
+    if let Some(ref name) = body.name {
+        let update = format!(
+            "{pfx}\n\
+             DELETE {{ GRAPH ?g {{ <{iri}> {p}:name ?old }} }}\n\
+             INSERT {{ GRAPH ?g {{ <{iri}> {p}:name \"{}\" }} }}\n\
+             WHERE  {{ GRAPH ?g {{ <{iri}> {p}:name ?old }} }}",
+            name.replace('"', "\\\"")
+        );
+        store.update(&update).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    }
+
+    if let Some(ref priority) = body.priority {
+        let valid = ["low", "normal", "high", "urgent"];
+        if !valid.contains(&priority.as_str()) {
+            return Err(StatusCode::BAD_REQUEST);
+        }
+        let update = format!(
+            "{pfx}\n\
+             DELETE {{ GRAPH ?g {{ <{iri}> {p}:priority ?old }} }}\n\
+             INSERT {{ GRAPH ?g {{ <{iri}> {p}:priority \"{priority}\" }} }}\n\
+             WHERE  {{ GRAPH ?g {{ OPTIONAL {{ <{iri}> {p}:priority ?old }} }} }}"
+        );
+        store.update(&update).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    }
+
+    if let Some(ref description) = body.description {
+        let escaped = description.replace('"', "\\\"").replace('\n', "\\n");
+        // Delete any existing description first (may not exist)
+        let del = format!(
+            "{pfx}\nDELETE {{ GRAPH ?g {{ <{iri}> {p}:description ?old }} }}\n\
+             WHERE  {{ GRAPH ?g {{ <{iri}> {p}:description ?old }} }}"
+        );
+        let _ = store.update(&del);
+        // Insert new description
+        if !description.is_empty() {
+            let ins = format!(
+                "{pfx}\nINSERT DATA {{ GRAPH <{graph}> {{ <{iri}> {p}:description \"{escaped}\" }} }}",
+                graph = crate::crud::workspace_graph_iri(ns, &crate::crud::workspace_slug(&state.cwd)),
+            );
+            store.update(&ins).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        }
+    }
+
+    crate::store::write_back(&store, &state.trig_path)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(Json(serde_json::json!({
+        "iri": iri,
+        "name": body.name,
+        "priority": body.priority,
+        "description": body.description,
+    })))
+}
+
+// ─── Task Delete ────────────────────────────────────────────
+
+pub async fn delete_task(
+    Path(iri): Path<String>,
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let iri = urldecode(&iri);
+    let ns = &state.config.namespace;
+    let pfx = crate::crud::prefixes(ns);
+
+    let mut store = state.store.lock().unwrap();
+
+    // Verify entity exists
+    let check = format!(
+        "{pfx}\nASK {{ GRAPH ?g {{ <{iri}> rdf:type ?t }} }}"
+    );
+    match store.query(&check) {
+        Ok(oxigraph::sparql::QueryResults::Boolean(true)) => {}
+        _ => return Err(StatusCode::NOT_FOUND),
+    }
+
+    // Delete all triples where task is subject
+    let del_subject = format!(
+        "{pfx}\nDELETE {{ GRAPH ?g {{ <{iri}> ?p ?o }} }}\n\
+         WHERE  {{ GRAPH ?g {{ <{iri}> ?p ?o }} }}"
+    );
+    store.update(&del_subject).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // Delete all triples where task is object (hasTask edges from project)
+    let del_object = format!(
+        "{pfx}\nDELETE {{ GRAPH ?g {{ ?s ?p <{iri}> }} }}\n\
+         WHERE  {{ GRAPH ?g {{ ?s ?p <{iri}> }} }}"
+    );
+    store.update(&del_object).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    crate::store::write_back(&store, &state.trig_path)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(Json(serde_json::json!({ "deleted": true, "iri": iri })))
 }
 
 // ─── Entity Creation ────────────────────────────────────────
