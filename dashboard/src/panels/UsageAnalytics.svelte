@@ -572,7 +572,7 @@
     {/if}
     <div class="sub-tabs">
       <button class="sub-tab" class:active={activeSubTab === 'usage'} on:click={() => activeSubTab = 'usage'}>Usage Overview</button>
-      <button class="sub-tab" class:active={activeSubTab === 'cost'} on:click={() => activeSubTab = 'cost'}>Cost Attribution</button>
+      <button class="sub-tab" class:active={activeSubTab === 'cost'} on:click={() => activeSubTab = 'cost'}>PAUL Usage</button>
     </div>
   </div>
 </div>
