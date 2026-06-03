@@ -985,20 +985,17 @@ struct PaulToml {
     name: Option<String>,
 }
 
-/// Collect all workspace roots to scan — current workspace + registered workspaces from settings.json
+/// Collect all workspace roots — current workspace + all registered in ~/.base-gbl/base.toml
 fn collect_workspace_roots(primary: &std::path::Path) -> Vec<std::path::PathBuf> {
     let mut roots = vec![primary.to_path_buf()];
 
-    // Read additionalDirectories from ~/.claude/settings.json
     if let Some(home) = dirs::home_dir() {
-        let settings_path = home.join(".claude/settings.json");
-        if let Ok(content) = std::fs::read_to_string(&settings_path) {
-            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
-                if let Some(dirs) = json.pointer("/permissions/additionalDirectories")
-                    .and_then(|v| v.as_array())
-                {
-                    for d in dirs {
-                        if let Some(path_str) = d.as_str() {
+        let base_toml = home.join(".base-gbl/base.toml");
+        if let Ok(content) = std::fs::read_to_string(&base_toml) {
+            if let Ok(table) = content.parse::<toml::Table>() {
+                if let Some(workspaces) = table.get("workspace").and_then(|v| v.as_array()) {
+                    for ws in workspaces {
+                        if let Some(path_str) = ws.get("path").and_then(|v| v.as_str()) {
                             let p = std::path::PathBuf::from(path_str);
                             if p.exists() && !roots.contains(&p) {
                                 roots.push(p);

@@ -23,17 +23,57 @@ pub struct AppState {
 pub async fn start(port: u16, cwd: PathBuf) {
     let config = BaseConfig::load(&cwd);
 
-    let (store, trig_path) = match crate::crud::load_workspace_store(&cwd) {
-        Ok((store, trig_path)) => (store, trig_path),
-        Err(e) => {
-            eprintln!("Failed to load graph: {e}");
-            eprintln!("Run `base scaffold` first, then `base sync` to populate.");
-            let base_dir = crate::config::find_workspace_base(&cwd)
-                .unwrap_or_else(|| cwd.join(".base"));
-            (
-                oxigraph::store::Store::new().expect("in-memory store"),
-                base_dir.join("graph.trig"),
-            )
+    // Collect all workspace graph.trig paths — primary + registered workspaces
+    let trig_path = crate::config::find_workspace_base(&cwd)
+        .unwrap_or_else(|| cwd.join(".base"))
+        .join("graph.trig");
+
+    let mut trig_paths: Vec<PathBuf> = vec![trig_path.clone()];
+
+    // Read registered workspaces from BASE's own registry (~/.base-gbl/base.toml)
+    if let Some(home) = dirs::home_dir() {
+        let base_toml = home.join(".base-gbl/base.toml");
+        if let Ok(content) = std::fs::read_to_string(&base_toml) {
+            if let Ok(table) = content.parse::<toml::Table>() {
+                if let Some(workspaces) = table.get("workspace").and_then(|v| v.as_array()) {
+                    for ws in workspaces {
+                        if let Some(path_str) = ws.get("path").and_then(|v| v.as_str()) {
+                            let candidate = PathBuf::from(path_str).join(".base/graph.trig");
+                            if candidate.exists() && candidate != trig_path {
+                                trig_paths.push(candidate);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Also check global tier
+        let global_trig = home.join(".base-gbl/graph.trig");
+        if global_trig.exists() {
+            trig_paths.push(global_trig);
+        }
+    }
+
+    let existing_paths: Vec<&std::path::Path> = trig_paths.iter()
+        .filter(|p| p.exists())
+        .map(|p| p.as_path())
+        .collect();
+
+    let store = if existing_paths.is_empty() {
+        eprintln!("No graph.trig files found. Run `base scaffold` then `base sync`.");
+        oxigraph::store::Store::new().expect("in-memory store")
+    } else {
+        println!("Loading {} graph(s):", existing_paths.len());
+        for p in &existing_paths {
+            println!("  • {}", p.display());
+        }
+        match crate::store::load_graphs(&existing_paths) {
+            Ok(store) => store,
+            Err(e) => {
+                eprintln!("Failed to load graphs: {e}");
+                oxigraph::store::Store::new().expect("in-memory store")
+            }
         }
     };
 
