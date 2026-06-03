@@ -70,7 +70,8 @@ fn run(event: &str) -> anyhow::Result<HookEventData> {
     let config = BaseConfig::load(&cwd);
 
     let session_id = stdin_json
-        .get("sessionId")
+        .get("session_id")
+        .or_else(|| stdin_json.get("sessionId"))
         .and_then(|v| v.as_str())
         .map(String::from);
 
