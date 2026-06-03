@@ -5,15 +5,15 @@
 See: .paul/PROJECT.md (updated 2026-06-01)
 
 **Core value:** Proactive, deterministic context-injection engine — suppression, not detection. The gate that stays silent until the one thing that matters changes.
-**Current focus:** v0.1 Proactive Context Engine MILESTONE COMPLETE. All 9 phases shipped. Phase 8 has optional polish remaining.
+**Current focus:** v0.1 Milestone complete. Phase 8 Plan 08 polish batch shipped (session fix, signal data, PAUL Usage, project toggle).
 
 ## Current Position
 
 Milestone: v0.1 Proactive Context Engine — COMPLETE ✓
 Phase: 9 of 9 (PAUL Integration Layer) — Complete ✓
-Plan: 09-02 complete. Loop closed.
-Status: Milestone complete. Phase 8 polish optional.
-Last activity: 2026-06-03 12:31 — Plan 09-02 unified (Cost Attribution Dashboard)
+Plan: 08-08 unified (Phase 8 polish batch). Loop closed.
+Status: Milestone complete.
+Last activity: 2026-06-03 13:26 — Plan 08-08 unified (Dashboard polish batch)
 
 Progress:
 - Milestone: [██████████] 100% ✓
@@ -78,10 +78,10 @@ Branch: main
 
 ## Session Continuity
 
-Last session: 2026-06-03 12:31
-Stopped at: Plan 09-02 unified — Milestone v0.1 complete
-Next action: Git commit + optional Phase 8 polish or new milestone
-Resume file: .paul/phases/09-paul-integration-layer/09-02-SUMMARY.md
+Last session: 2026-06-03 13:26
+Stopped at: Plan 08-08 unified — Dashboard polish batch
+Next action: More Phase 8 polish or new milestone
+Resume file: .paul/phases/08-command-center-dashboard/08-08-SUMMARY.md
 
 ---
 *STATE.md — Updated after every significant action*
