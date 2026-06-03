@@ -985,16 +985,51 @@ struct PaulToml {
     name: Option<String>,
 }
 
-/// Scan for all .paul/ledger.toml files under the workspace and parse them directly.
+/// Collect all workspace roots to scan — current workspace + registered workspaces from settings.json
+fn collect_workspace_roots(primary: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let mut roots = vec![primary.to_path_buf()];
+
+    // Read additionalDirectories from ~/.claude/settings.json
+    if let Some(home) = dirs::home_dir() {
+        let settings_path = home.join(".claude/settings.json");
+        if let Ok(content) = std::fs::read_to_string(&settings_path) {
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                if let Some(dirs) = json.pointer("/permissions/additionalDirectories")
+                    .and_then(|v| v.as_array())
+                {
+                    for d in dirs {
+                        if let Some(path_str) = d.as_str() {
+                            let p = std::path::PathBuf::from(path_str);
+                            if p.exists() && !roots.contains(&p) {
+                                roots.push(p);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    roots
+}
+
+/// Scan for all .paul/ledger.toml files across all registered workspaces.
 fn scan_ledger_files(cwd: &std::path::Path) -> Vec<OpsLedgerEntry> {
     let mut entries = Vec::new();
 
-    // Walk known locations: cwd itself, and apps/*
-    let mut dirs_to_check: Vec<std::path::PathBuf> = vec![cwd.to_path_buf()];
-    if let Ok(apps) = std::fs::read_dir(cwd.join("apps")) {
-        for entry in apps.flatten() {
-            if entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false) {
-                dirs_to_check.push(entry.path());
+    let workspace_roots = collect_workspace_roots(cwd);
+    let mut dirs_to_check: Vec<std::path::PathBuf> = Vec::new();
+
+    for root in &workspace_roots {
+        dirs_to_check.push(root.clone());
+        // Also scan apps/*, tools/*, production/*, clients/* subdirs
+        for subdir in &["apps", "tools", "production", "clients"] {
+            if let Ok(children) = std::fs::read_dir(root.join(subdir)) {
+                for entry in children.flatten() {
+                    if entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false) {
+                        dirs_to_check.push(entry.path());
+                    }
+                }
             }
         }
     }
