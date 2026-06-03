@@ -952,47 +952,94 @@ pub struct OpsLedgerEntry {
     pub session_cost: Option<f64>,
 }
 
-pub async fn ops_ledger(
-    State(state): State<Arc<AppState>>,
-) -> Json<Vec<OpsLedgerEntry>> {
-    let ns = &state.config.namespace;
-    let p = &ns.prefix;
-    let pfx = crate::crud::prefixes(ns);
-    let store = state.store.lock().unwrap();
+/// TOML structs for direct ledger.toml parsing
+#[derive(serde::Deserialize)]
+struct LedgerToml {
+    entry: Option<Vec<LedgerTomlEntry>>,
+}
 
-    // Query all LedgerEntry triples
-    let sparql = format!(
-        "{pfx}\nSELECT ?e ?action ?phase ?plan ?ts ?note ?proj WHERE {{\n\
-           GRAPH ?g {{ ?e rdf:type {p}:LedgerEntry .\n\
-             ?e {p}:action ?action .\n\
-             ?e {p}:timestamp ?ts .\n\
-             OPTIONAL {{ ?e {p}:phase ?phase }}\n\
-             OPTIONAL {{ ?e {p}:plan ?plan }}\n\
-             OPTIONAL {{ ?e {p}:note ?note }}\n\
-             OPTIONAL {{ ?e {p}:belongsTo ?projIri . ?projIri {p}:name ?proj }}\n\
-           }}\n\
-         }} ORDER BY DESC(?ts)"
-    );
+#[derive(serde::Deserialize)]
+struct LedgerTomlEntry {
+    action: String,
+    phase: Option<u32>,
+    plan: Option<String>,
+    at: String,
+    note: Option<String>,
+}
 
+#[derive(serde::Deserialize)]
+struct PaulToml {
+    name: Option<String>,
+}
+
+/// Scan for all .paul/ledger.toml files under the workspace and parse them directly.
+fn scan_ledger_files(cwd: &std::path::Path) -> Vec<OpsLedgerEntry> {
     let mut entries = Vec::new();
-    if let Ok(oxigraph::sparql::QueryResults::Solutions(solutions)) = store.query(&sparql) {
-        for row in solutions.flatten() {
-            entries.push(OpsLedgerEntry {
-                iri: row.get("e").map(|t| term_str(t.into())).unwrap_or_default(),
-                action: row.get("action").map(|t| term_str(t.into())).unwrap_or_default(),
-                phase: row.get("phase").map(|t| term_str(t.into())).unwrap_or_default(),
-                plan: row.get("plan").map(|t| term_str(t.into())).unwrap_or_default(),
-                timestamp: row.get("ts").map(|t| term_str(t.into())).unwrap_or_default(),
-                note: row.get("note").map(|t| term_str(t.into())).unwrap_or_default(),
-                project: row.get("proj").map(|t| term_str(t.into())).unwrap_or_default(),
-                session_tokens: None,
-                session_cost: None,
-            });
+
+    // Walk known locations: cwd itself, and apps/*
+    let mut dirs_to_check: Vec<std::path::PathBuf> = vec![cwd.to_path_buf()];
+    if let Ok(apps) = std::fs::read_dir(cwd.join("apps")) {
+        for entry in apps.flatten() {
+            if entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false) {
+                dirs_to_check.push(entry.path());
+            }
         }
     }
 
+    for dir in &dirs_to_check {
+        let ledger_path = dir.join(".paul/ledger.toml");
+        if !ledger_path.exists() { continue; }
+
+        let content = match std::fs::read_to_string(&ledger_path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let ledger: LedgerToml = match toml::from_str(&content) {
+            Ok(l) => l,
+            Err(_) => continue,
+        };
+
+        // Read project name from paul.toml
+        let project_name = std::fs::read_to_string(dir.join(".paul/paul.toml"))
+            .ok()
+            .and_then(|c| toml::from_str::<PaulToml>(&c).ok())
+            .and_then(|p| p.name)
+            .unwrap_or_else(|| dir.file_name().and_then(|n| n.to_str()).unwrap_or("unknown").to_string());
+
+        if let Some(raw_entries) = ledger.entry {
+            for e in raw_entries {
+                entries.push(OpsLedgerEntry {
+                    iri: String::new(),
+                    action: e.action,
+                    phase: e.phase.map(|p| p.to_string()).unwrap_or_default(),
+                    plan: e.plan.unwrap_or_default(),
+                    timestamp: e.at,
+                    note: e.note.unwrap_or_default(),
+                    project: project_name.clone(),
+                    session_tokens: None,
+                    session_cost: None,
+                });
+            }
+        }
+    }
+
+    // Sort by timestamp descending
+    entries.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+    entries
+}
+
+pub async fn ops_ledger(
+    State(state): State<Arc<AppState>>,
+) -> Json<Vec<OpsLedgerEntry>> {
+    // Read ledger.toml directly from filesystem — no graph sync needed
+    let cwd = std::env::current_dir().unwrap_or_default();
+    let workspace_dir = crate::config::find_workspace_base(&cwd)
+        .and_then(|b| b.parent().map(|p| p.to_path_buf()))
+        .unwrap_or(cwd);
+
+    let mut entries = scan_ledger_files(&workspace_dir);
+
     // Join with session JSONL data via timestamp matching
-    drop(store); // release lock before I/O-heavy session parsing
     let events = collect_all_events(365);
     if !events.is_empty() {
         // Group events by session (cwd acts as session grouping key)
