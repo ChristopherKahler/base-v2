@@ -7,10 +7,11 @@ use crate::config::BaseConfig;
 use crate::crud;
 use crate::store;
 
-pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Result<()> {
+pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Result<super::HookEventData> {
+    let mut data = super::HookEventData::default();
     let file_paths = extract_file_paths(event);
     if file_paths.is_empty() {
-        return Ok(());
+        return Ok(data);
     }
 
     // ─── lastActive timestamp update (existing behavior) ─────
@@ -64,6 +65,7 @@ pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Res
                             crud::ast_query::section_entities(cwd, &config.namespace, fp_str, offset, limit)
                         {
                             print!("{}", section.trim_end());
+                            data.section_context = true;
                         }
                     }
                 }
@@ -71,7 +73,7 @@ pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Res
         }
     }
 
-    Ok(())
+    Ok(data)
 }
 
 fn is_source_file(path: &str) -> bool {

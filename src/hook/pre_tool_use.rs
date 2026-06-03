@@ -10,13 +10,15 @@ use crate::domain::session::SessionState;
 
 /// PreToolUse: see file path in tool call → match file_keywords + path triggers → inject rules BEFORE tool executes.
 /// Also: inject AST file map for source files, and redirect grep/find to ast query.
-pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Result<()> {
+pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Result<super::HookEventData> {
     let mut output = String::new();
+    let mut data = super::HookEventData::default();
 
     // ─── Grep/find intercept (Bash tool) ─────────────────────
     if let Some(hint) = grep_intercept(event) {
         output.push_str(&hint);
         output.push('\n');
+        data.grep_intercepted = true;
     }
 
     // ─── Domain rule injection (file path match) ─────────────
@@ -48,6 +50,8 @@ pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Res
                     if !rules_text.is_empty() {
                         output.push_str(&rules_text);
                         output.push('\n');
+                        data.domains_matched.push(domain_def.name.clone());
+                        data.rules_injected += rules_text.lines().filter(|l| l.starts_with("  ")).count();
                     }
                 }
             }
@@ -87,6 +91,7 @@ pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Res
                             if let Some(bd) = base_dir.as_deref() {
                                 let _ = session.save(bd);
                             }
+                            data.ast_injected = true;
                         }
                     }
                 }
@@ -98,7 +103,7 @@ pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Res
         print!("{}", output.trim_end());
     }
 
-    Ok(())
+    Ok(data)
 }
 
 /// Check if a file path is a source code file worth AST injection.

@@ -24,6 +24,12 @@ pub struct HookEventData {
     pub file_path: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session_id: Option<String>,
+    /// Pre-tool-use: AST file map was injected for this file
+    pub ast_injected: bool,
+    /// Pre-tool-use: grep/find was intercepted with ast-hint
+    pub grep_intercepted: bool,
+    /// Post-tool-use: section-specific AST context was injected (partial read)
+    pub section_context: bool,
 }
 
 /// Extract tool name and file path from hook event JSON.
@@ -81,14 +87,20 @@ fn run(event: &str) -> anyhow::Result<HookEventData> {
             Ok(HookEventData { session_id, ..Default::default() })
         }
         "pre-tool-use" => {
-            pre_tool_use::handle(&config, &cwd, &stdin_json)?;
+            let mut data = pre_tool_use::handle(&config, &cwd, &stdin_json)?;
             let (tool_name, file_path) = extract_tool_context(&stdin_json);
-            Ok(HookEventData { tool_name, file_path, session_id, ..Default::default() })
+            data.tool_name = tool_name;
+            data.file_path = file_path;
+            data.session_id = session_id;
+            Ok(data)
         }
         "post-tool-use" => {
-            post_tool_use::handle(&config, &cwd, &stdin_json)?;
+            let mut data = post_tool_use::handle(&config, &cwd, &stdin_json)?;
             let (tool_name, file_path) = extract_tool_context(&stdin_json);
-            Ok(HookEventData { tool_name, file_path, session_id, ..Default::default() })
+            data.tool_name = tool_name;
+            data.file_path = file_path;
+            data.session_id = session_id;
+            Ok(data)
         }
         "user-prompt-submit" => {
             let mut data = user_prompt_submit::handle(&config, &cwd, &stdin_json)?;
@@ -123,6 +135,9 @@ fn log_hook_event(hook: &str, success: bool, data: Option<&HookEventData>) {
         "tool_name": data.and_then(|d| d.tool_name.as_deref()),
         "file_path": data.and_then(|d| d.file_path.as_deref()),
         "session_id": data.and_then(|d| d.session_id.as_deref()),
+        "ast_injected": data.map(|d| d.ast_injected).unwrap_or(false),
+        "grep_intercepted": data.map(|d| d.grep_intercepted).unwrap_or(false),
+        "section_context": data.map(|d| d.section_context).unwrap_or(false),
     });
 
     use std::io::Write;

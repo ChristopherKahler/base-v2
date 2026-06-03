@@ -244,6 +244,7 @@ pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Res
         tool_name: None,
         file_path: None,
         session_id: None, // populated by run() after handle returns
+        ..Default::default()
     })
 }
 
