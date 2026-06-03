@@ -95,11 +95,11 @@ export async function getReminders() {
   catch { return []; }
 }
 
-export async function createReminder(name, due) {
+export async function createReminder(name, due, relatedTo) {
   try {
     const r = await fetch(`${BASE}/api/ops/reminder`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, due }),
+      body: JSON.stringify({ name, due, related_to: relatedTo || null }),
     });
     return r.ok ? await r.json() : null;
   } catch { return null; }

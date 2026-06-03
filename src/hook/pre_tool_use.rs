@@ -27,7 +27,7 @@ pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Res
         let domains = domain::load_domains(cwd);
         if !domains.is_empty() {
             let base_dir = crate::config::find_workspace_base(cwd);
-            let session = base_dir
+            let mut session = base_dir
                 .as_deref()
                 .map(SessionState::load)
                 .unwrap_or_default();
@@ -41,8 +41,16 @@ pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Res
             if !matched.is_empty() {
                 crate::hook::user_prompt_submit::ensure_domain_sync_pub(config, cwd);
                 let graph_store = load_workspace_graph(cwd);
+                let mut session_dirty = false;
 
                 for domain_def in &matched {
+                    // Session dedup: skip if this domain's rules were already injected
+                    let rules_hash = domain::session::rules_hash(&domain_def.rules);
+                    if session.is_injected(&domain_def.name, rules_hash) {
+                        data.suppressed += 1;
+                        continue;
+                    }
+
                     let rules_text = match &graph_store {
                         Some(store) => query_rules_from_graph(store, config, domain_def),
                         None => format_toml_rules(domain_def),
@@ -52,6 +60,14 @@ pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Res
                         output.push('\n');
                         data.domains_matched.push(domain_def.name.clone());
                         data.rules_injected += rules_text.lines().filter(|l| l.starts_with("  ")).count();
+                        session.mark_injected(&domain_def.name, rules_hash);
+                        session_dirty = true;
+                    }
+                }
+
+                if session_dirty {
+                    if let Some(bd) = base_dir.as_deref() {
+                        let _ = session.save(bd);
                     }
                 }
             }

@@ -114,14 +114,15 @@
   let showReminderForm = false;
   let newRemName = '';
   let newRemDue = '';
+  let newRemProject = '';
 
   $: activeReminders = reminders.filter(r => r.status !== 'completed');
   $: completedReminders = reminders.filter(r => r.status === 'completed');
 
   async function doCreateReminder() {
     if (!newRemName.trim()) return;
-    await createReminder(newRemName, newRemDue);
-    newRemName = ''; newRemDue = '';
+    await createReminder(newRemName, newRemDue, newRemProject);
+    newRemName = ''; newRemDue = ''; newRemProject = '';
     showReminderForm = false;
     reminders = await getReminders();
   }
@@ -380,6 +381,10 @@
           <div class="ops-inline-form">
             <input bind:value={newRemName} placeholder="Reminder" class="ops-inline-input" />
             <input bind:value={newRemDue} type="date" class="ops-inline-input" />
+            <select bind:value={newRemProject} class="ops-inline-input">
+              <option value="">No project</option>
+              {#each projects as p}<option value={p.name}>{p.name}</option>{/each}
+            </select>
             <div class="ops-inline-actions">
               <button class="graph-btn" on:click={doCreateReminder} disabled={!newRemName.trim()}>Add</button>
               <button class="graph-btn" on:click={() => showReminderForm = false}>Cancel</button>
@@ -390,6 +395,7 @@
           {#each activeReminders as rem}
             <div class="ops-reminder-row" class:overdue={rem.overdue}>
               <span class="ops-reminder-name">{rem.name}</span>
+              {#if rem.related_name}<span class="ops-reminder-project">{rem.related_name}</span>{/if}
               <span class="ops-reminder-due">{rem.due || 'No date'}</span>
               <div class="ops-reminder-actions">
                 <button class="ops-reminder-complete" on:click={() => doCompleteReminder(rem.iri)} title="Mark complete">✓</button>

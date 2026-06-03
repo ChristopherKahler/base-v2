@@ -73,12 +73,12 @@
     });
 
     return groups.map((s, i) => {
-      const n = s.maxPromptNum;
+      const n = s.prompts;
       let bracket = null;
       if (n > 0) {
-        if (n <= 3) bracket = { label: 'FRESH', color: 'var(--green)' };
-        else if (n <= 10) bracket = { label: 'MODERATE', color: 'var(--primary)' };
-        else if (n <= 20) bracket = { label: 'DEPLETED', color: 'var(--orange)' };
+        if (n <= 5) bracket = { label: 'FRESH', color: 'var(--green)' };
+        else if (n <= 15) bracket = { label: 'MODERATE', color: 'var(--primary)' };
+        else if (n <= 30) bracket = { label: 'DEPLETED', color: 'var(--orange)' };
         else bracket = { label: 'CRITICAL', color: 'var(--red)' };
       }
       return {

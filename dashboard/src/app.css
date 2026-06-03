@@ -486,6 +486,10 @@ html, body {
 .ops-reminder-row.completed { opacity: 0.5; }
 .ops-reminder-row.completed .ops-reminder-name { text-decoration: line-through; }
 .ops-reminder-name { color: var(--ink); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ops-reminder-project {
+  font-size: 10px; color: var(--primary); background: rgba(88, 139, 248, 0.1);
+  padding: 1px 6px; border-radius: 3px; flex-shrink: 0;
+}
 .ops-reminder-due { color: var(--ink-subtle); font-size: 11px; flex-shrink: 0; }
 .ops-reminder-actions { display: flex; gap: 2px; flex-shrink: 0; opacity: 0; transition: opacity 0.1s; }
 .ops-reminder-row:hover .ops-reminder-actions { opacity: 1; }

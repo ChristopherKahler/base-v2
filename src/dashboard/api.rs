@@ -105,6 +105,8 @@ pub struct OpsReminder {
     pub due: String,
     pub status: String,
     pub overdue: bool,
+    pub related_to: Option<String>,
+    pub related_name: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -638,10 +640,11 @@ pub async fn ops_reminders(State(state): State<Arc<AppState>>) -> Json<Vec<OpsRe
     let store = state.store.lock().unwrap();
 
     let sparql = format!(
-        "{pfx}\nSELECT ?r ?name ?due ?rstatus WHERE {{\n\
+        "{pfx}\nSELECT ?r ?name ?due ?rstatus ?relIri ?relName WHERE {{\n\
            GRAPH ?g {{ ?r rdf:type {p}:Reminder . ?r {p}:name ?name .\n\
              OPTIONAL {{ ?r {p}:due ?due }}\n\
              OPTIONAL {{ ?r {p}:status ?rstatus }}\n\
+             OPTIONAL {{ ?r {p}:relatedTo ?relIri . ?relIri {p}:name ?relName }}\n\
            }}\n\
          }} ORDER BY ?due"
     );
@@ -658,6 +661,8 @@ pub async fn ops_reminders(State(state): State<Arc<AppState>>) -> Json<Vec<OpsRe
                 iri: row.get("r").map(|t| term_str(t.into())).unwrap_or_default(),
                 name: row.get("name").map(|t| term_str(t.into())).unwrap_or_default(),
                 due, status, overdue,
+                related_to: row.get("relIri").map(|t| term_str(t.into())),
+                related_name: row.get("relName").map(|t| term_str(t.into())),
             });
         }
     }
@@ -810,6 +815,7 @@ pub async fn delete_decision(
 pub struct CreateReminderBody {
     pub name: String,
     pub due: Option<String>,
+    pub related_to: Option<String>,
 }
 
 pub async fn create_reminder(
@@ -823,10 +829,17 @@ pub async fn create_reminder(
     let iri = crate::crud::build_iri(ns, "reminder", &slug);
     let graph = crate::crud::workspace_graph_iri(ns, &crate::crud::workspace_slug(&state.cwd));
 
-    let mut due_triple = String::new();
+    let mut extra_triples = String::new();
     if let Some(ref due) = body.due {
         if !due.is_empty() {
-            due_triple = format!("<{iri}> {p}:due \"{due}\" .\n");
+            extra_triples.push_str(&format!("<{iri}> {p}:due \"{due}\" .\n"));
+        }
+    }
+    if let Some(ref related) = body.related_to {
+        if !related.is_empty() {
+            let related_slug = crate::crud::slugify(related);
+            let related_iri = crate::crud::build_iri(ns, "project", &related_slug);
+            extra_triples.push_str(&format!("<{iri}> {p}:relatedTo <{related_iri}> .\n"));
         }
     }
 
@@ -836,7 +849,7 @@ pub async fn create_reminder(
            <{iri}> rdf:type {p}:Reminder .\n\
            <{iri}> {p}:name \"{}\" .\n\
            <{iri}> {p}:status \"active\" .\n\
-           {due_triple}\
+           {extra_triples}\
          }}\n}}",
         body.name.replace('"', "\\\""),
     );
