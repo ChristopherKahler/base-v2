@@ -1,173 +1,139 @@
 <script>
   import { onMount } from 'svelte';
   import { getLedger, getCostSummary } from '../lib/api.js';
-  import * as d3 from 'd3';
 
-  let summary = null;
   let ledger = [];
   let loading = true;
-  let selectedPhase = null;
-  let chartEl;
+  let expandedProject = null;
+  let expandedPhase = null;
+  let expandedPlan = null;
 
   function fmtCost(v) {
-    if (v == null) return '$0.00';
+    if (v == null || v === 0) return '$0.00';
     return '$' + v.toFixed(2);
   }
 
-  function fmtCostCompact(v) {
-    if (v == null || v === 0) return '$0';
-    if (v < 0.01) return '<$0.01';
-    return '$' + v.toFixed(2);
+  function fmtDuration(ms) {
+    if (!ms || ms <= 0) return '—';
+    const mins = Math.floor(ms / 60000);
+    const hrs = Math.floor(mins / 60);
+    if (hrs > 0) return `${hrs}h ${mins % 60}m`;
+    if (mins > 0) return `${mins}m`;
+    return '<1m';
   }
 
-  function timeAgo(ts) {
+  function fmtDate(ts) {
     if (!ts) return '';
-    const now = Date.now();
-    const then = new Date(ts).getTime();
-    const diff = Math.floor((now - then) / 1000);
-    if (diff < 60) return 'just now';
-    if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
-    if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
-    if (diff < 604800) return Math.floor(diff / 86400) + 'd ago';
-    return new Date(ts).toLocaleDateString();
+    const d = new Date(ts);
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  }
+
+  function fmtTime(ts) {
+    if (!ts) return '';
+    const d = new Date(ts);
+    return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
   }
 
   const actionColors = {
-    plan: 'var(--primary)',
-    apply: 'var(--green)',
-    unify: 'var(--accent-purple)',
-    iterate: 'var(--orange)',
-    discover: 'var(--accent-cyan)',
-    research: 'var(--accent-lavender)',
+    plan: { bg: 'var(--primary)', label: 'PLAN' },
+    apply: { bg: 'var(--green)', label: 'APPLY' },
+    unify: { bg: 'var(--accent-purple)', label: 'UNIFY' },
+    iterate: { bg: 'var(--orange)', label: 'ITERATE' },
+    discover: { bg: 'var(--accent-cyan)', label: 'DISCOVER' },
+    research: { bg: 'var(--accent-lavender)', label: 'RESEARCH' },
   };
 
-  function actionColor(action) {
+  function actionStyle(action) {
     const key = (action || '').toLowerCase();
-    return actionColors[key] || 'var(--ink-tertiary)';
+    return actionColors[key] || { bg: 'var(--ink-tertiary)', label: action };
   }
 
-  $: mostExpensive = summary && summary.phases.length
-    ? summary.phases.reduce((a, b) => a.total_cost > b.total_cost ? a : b)
-    : null;
+  // ─── Computed hierarchy: Project → Phase → Plan → Actions ──
 
-  $: avgCost = summary && summary.total_entries > 0
-    ? summary.total_cost / summary.total_entries
-    : 0;
+  $: hierarchy = buildHierarchy(ledger);
 
-  $: sortedPhases = summary
-    ? [...summary.phases].sort((a, b) => b.total_cost - a.total_cost)
-    : [];
+  function buildHierarchy(entries) {
+    if (!entries.length) return [];
 
-  $: maxPhaseCost = sortedPhases.length ? sortedPhases[0].total_cost : 0;
+    const projectMap = new Map();
 
-  $: recentLedger = ledger.slice(0, 20);
+    for (const e of entries) {
+      const proj = e.project || 'Unknown Project';
+      if (!projectMap.has(proj)) {
+        projectMap.set(proj, { name: proj, phases: new Map(), entries: [] });
+      }
+      const p = projectMap.get(proj);
+      p.entries.push(e);
 
-  function selectPhase(phase) {
-    selectedPhase = selectedPhase?.phase === phase.phase ? null : phase;
-  }
+      const phaseKey = e.phase || 'unknown';
+      if (!p.phases.has(phaseKey)) {
+        p.phases.set(phaseKey, { phase: phaseKey, plans: new Map(), entries: [] });
+      }
+      const ph = p.phases.get(phaseKey);
+      ph.entries.push(e);
 
-  function renderChart() {
-    if (!chartEl || !sortedPhases.length) return;
+      const planKey = e.plan || 'unknown';
+      if (!ph.plans.has(planKey)) {
+        ph.plans.set(planKey, { plan: planKey, actions: [] });
+      }
+      ph.plans.get(planKey).actions.push(e);
+    }
 
-    d3.select(chartEl).selectAll('*').remove();
+    // Compute stats at each level
+    const projects = [...projectMap.values()].map(proj => {
+      const phases = [...proj.phases.values()].map(ph => {
+        const plans = [...ph.plans.values()].map(plan => {
+          const sorted = plan.actions.sort((a, b) => (a.timestamp || '').localeCompare(b.timestamp || ''));
+          const first = sorted[0]?.timestamp;
+          const last = sorted[sorted.length - 1]?.timestamp;
+          const duration = first && last ? new Date(last) - new Date(first) : 0;
+          const cost = sorted.reduce((s, e) => s + (e.session_cost || 0), 0);
+          return { ...plan, duration, cost, first, last, actions: sorted };
+        }).sort((a, b) => (a.plan || '').localeCompare(b.plan || ''));
 
-    const margin = { top: 8, right: 80, bottom: 4, left: 120 };
-    const barHeight = 32;
-    const gap = 6;
-    const width = chartEl.clientWidth;
-    const height = sortedPhases.length * (barHeight + gap) + margin.top + margin.bottom;
-
-    const svg = d3.select(chartEl)
-      .append('svg')
-      .attr('width', width)
-      .attr('height', height);
-
-    const maxCost = d3.max(sortedPhases, d => d.total_cost) || 1;
-    const x = d3.scaleLinear()
-      .domain([0, maxCost * 1.1])
-      .range([0, width - margin.left - margin.right]);
-
-    const g = svg.append('g')
-      .attr('transform', `translate(${margin.left}, ${margin.top})`);
-
-    // Phase labels (left)
-    g.selectAll('.phase-label')
-      .data(sortedPhases)
-      .enter()
-      .append('text')
-      .attr('x', -8)
-      .attr('y', (_, i) => i * (barHeight + gap) + barHeight / 2)
-      .attr('text-anchor', 'end')
-      .attr('dominant-baseline', 'middle')
-      .attr('fill', '#B0B2B7')
-      .style('font-size', '11px')
-      .text(d => d.phase.length > 16 ? d.phase.substring(0, 16) + '…' : d.phase);
-
-    // Gradient defs
-    const defs = svg.append('defs');
-    const gradient = defs.append('linearGradient')
-      .attr('id', 'bar-gradient')
-      .attr('x1', '0%').attr('y1', '0%')
-      .attr('x2', '100%').attr('y2', '0%');
-    gradient.append('stop').attr('offset', '0%').attr('stop-color', '#725EFF');
-    gradient.append('stop').attr('offset', '100%').attr('stop-color', '#BF6AFB');
-
-    // Bars
-    g.selectAll('.phase-bar')
-      .data(sortedPhases)
-      .enter()
-      .append('rect')
-      .attr('class', 'phase-bar')
-      .attr('x', 0)
-      .attr('y', (_, i) => i * (barHeight + gap))
-      .attr('width', d => Math.max(2, x(d.total_cost)))
-      .attr('height', barHeight)
-      .attr('rx', 4)
-      .attr('fill', 'url(#bar-gradient)')
-      .attr('opacity', 0.85)
-      .style('cursor', 'pointer')
-      .on('click', (_, d) => selectPhase(d));
-
-    // Cost labels (right of bar)
-    g.selectAll('.cost-label')
-      .data(sortedPhases)
-      .enter()
-      .append('text')
-      .attr('x', d => Math.max(2, x(d.total_cost)) + 8)
-      .attr('y', (_, i) => i * (barHeight + gap) + barHeight / 2)
-      .attr('dominant-baseline', 'middle')
-      .attr('fill', '#ffffff')
-      .style('font-size', '11px')
-      .style('font-weight', '600')
-      .text(d => `${fmtCost(d.total_cost)}  ·  ${d.session_count} sessions`);
-
-    // Hover highlight
-    g.selectAll('.phase-bar')
-      .on('mouseenter', function() { d3.select(this).attr('opacity', 1); })
-      .on('mouseleave', function() {
-        d3.select(this).attr('opacity', d => selectedPhase?.phase === d.phase ? 1 : 0.85);
+        const first = plans[0]?.first;
+        const last = plans[plans.length - 1]?.last;
+        const duration = first && last ? new Date(last) - new Date(first) : 0;
+        const cost = plans.reduce((s, p) => s + p.cost, 0);
+        const actionCount = ph.entries.length;
+        return { ...ph, plans, duration, cost, first, last, actionCount };
+      }).sort((a, b) => {
+        const an = parseInt(a.phase) || 0;
+        const bn = parseInt(b.phase) || 0;
+        return an - bn;
       });
 
-    // Selected highlight
-    if (selectedPhase) {
-      g.selectAll('.phase-bar')
-        .attr('opacity', d => d.phase === selectedPhase.phase ? 1 : 0.5);
-    }
+      const first = phases[0]?.first;
+      const last = phases[phases.length - 1]?.last;
+      const duration = first && last ? new Date(last) - new Date(first) : 0;
+      const cost = phases.reduce((s, p) => s + p.cost, 0);
+      const totalEntries = proj.entries.length;
+      return { ...proj, phases, duration, cost, first, last, totalEntries };
+    });
+
+    return projects;
   }
 
-  $: if (chartEl && sortedPhases.length) {
-    renderChart();
+  // ─── Expand/collapse ──────────────────────────────────────
+
+  function toggleProject(name) {
+    expandedProject = expandedProject === name ? null : name;
+    expandedPhase = null;
+    expandedPlan = null;
   }
 
-  $: if (selectedPhase) {
-    renderChart();
+  function togglePhase(key) {
+    expandedPhase = expandedPhase === key ? null : key;
+    expandedPlan = null;
+  }
+
+  function togglePlan(key) {
+    expandedPlan = expandedPlan === key ? null : key;
   }
 
   async function loadData() {
     loading = true;
-    const [s, l] = await Promise.all([getCostSummary(), getLedger()]);
-    summary = s;
-    ledger = l || [];
+    ledger = (await getLedger()) || [];
     loading = false;
   }
 
@@ -180,100 +146,83 @@
       <div class="loading-pulse"></div>
       <span>Loading cost data…</span>
     </div>
-  {:else if !summary || summary.total_entries === 0}
+  {:else if hierarchy.length === 0}
     <div class="empty-state">
       <span class="empty-icon">📊</span>
       <h3>No cost data yet</h3>
       <p>Cost attribution data appears after PAUL ledger entries are extracted via <code>base sync</code>.</p>
     </div>
   {:else}
-    <!-- Summary cards -->
-    <div class="stats-row">
-      <div class="stat-card">
-        <span class="stat-label">Total Cost</span>
-        <span class="stat-value cost">{fmtCost(summary.total_cost)}</span>
-        <span class="stat-sub">{summary.total_entries} ledger entries</span>
-      </div>
-      <div class="stat-card">
-        <span class="stat-label">Phases Tracked</span>
-        <span class="stat-value">{summary.phases.length}</span>
-        <span class="stat-sub">{summary.phases.reduce((a, p) => a + p.session_count, 0)} total sessions</span>
-      </div>
-      <div class="stat-card">
-        <span class="stat-label">Most Expensive</span>
-        <span class="stat-value phase-name">{mostExpensive ? mostExpensive.phase : '—'}</span>
-        <span class="stat-sub">{mostExpensive ? fmtCost(mostExpensive.total_cost) : ''}</span>
-      </div>
-      <div class="stat-card">
-        <span class="stat-label">Avg Cost / Entry</span>
-        <span class="stat-value cost">{fmtCost(avgCost)}</span>
-        <span class="stat-sub">across all phases</span>
-      </div>
-    </div>
-
-    <!-- Phase breakdown chart -->
-    <div class="section">
-      <div class="section-header">
-        <h3>Cost by Phase</h3>
-        {#if selectedPhase}
-          <button class="clear-btn" on:click={() => { selectedPhase = null; }}>✕ Clear selection</button>
-        {/if}
-      </div>
-      <div class="chart-container" bind:this={chartEl}></div>
-    </div>
-
-    <!-- Action drill-down -->
-    {#if selectedPhase}
-      <div class="section drill-down">
-        <h3>
-          <span class="drill-phase">{selectedPhase.phase}</span>
-          <span class="drill-meta">{fmtCost(selectedPhase.total_cost)} · {selectedPhase.session_count} sessions</span>
-        </h3>
-        <div class="action-table-wrap">
-          <table class="action-table">
-            <thead>
-              <tr>
-                <th>Action</th>
-                <th class="num">Cost</th>
-                <th class="num">Sessions</th>
-                <th class="num">Avg / Session</th>
-              </tr>
-            </thead>
-            <tbody>
-              {#each selectedPhase.actions.sort((a, b) => b.cost - a.cost) as action}
-                <tr>
-                  <td>
-                    <span class="action-badge" style="background: {actionColor(action.action)}">{action.action}</span>
-                  </td>
-                  <td class="num">{fmtCost(action.cost)}</td>
-                  <td class="num">{action.count}</td>
-                  <td class="num">{fmtCostCompact(action.count > 0 ? action.cost / action.count : 0)}</td>
-                </tr>
-              {/each}
-            </tbody>
-          </table>
+    {#each hierarchy as project}
+      <!-- Project level -->
+      <button class="tree-row project-row" class:expanded={expandedProject === project.name} on:click={() => toggleProject(project.name)}>
+        <span class="tree-chevron">{expandedProject === project.name ? '▾' : '▸'}</span>
+        <span class="tree-name project-name">{project.name}</span>
+        <div class="tree-stats">
+          <span class="stat-pill entries">{project.totalEntries} entries</span>
+          <span class="stat-pill phases">{project.phases.length} phases</span>
+          <span class="stat-pill duration">{fmtDuration(project.duration)}</span>
+          <span class="stat-pill cost">{fmtCost(project.cost)}</span>
         </div>
-      </div>
-    {/if}
+      </button>
 
-    <!-- Ledger event log -->
-    {#if recentLedger.length > 0}
-      <div class="section">
-        <h3>Recent Ledger Entries</h3>
-        <div class="ledger-log">
-          {#each recentLedger as entry}
-            <div class="ledger-row">
-              <span class="ledger-time">{timeAgo(entry.timestamp)}</span>
-              <span class="action-badge" style="background: {actionColor(entry.action)}">{entry.action}</span>
-              <span class="ledger-phase">{entry.phase || '—'}</span>
-              {#if entry.plan}<span class="ledger-plan">Plan {entry.plan}</span>{/if}
-              {#if entry.session_cost != null}<span class="ledger-cost">{fmtCostCompact(entry.session_cost)}</span>{/if}
-              {#if entry.note}<span class="ledger-note">{entry.note}</span>{/if}
+      {#if expandedProject === project.name}
+        {#each project.phases as phase}
+          <!-- Phase level -->
+          <button class="tree-row phase-row" class:expanded={expandedPhase === phase.phase} on:click={() => togglePhase(phase.phase)}>
+            <span class="tree-chevron">{expandedPhase === phase.phase ? '▾' : '▸'}</span>
+            <span class="tree-name phase-name">Phase {phase.phase}</span>
+            <div class="tree-stats">
+              <span class="stat-pill plans">{phase.plans.length} plan{phase.plans.length !== 1 ? 's' : ''}</span>
+              <span class="stat-pill actions">{phase.actionCount} actions</span>
+              <span class="stat-pill duration">{fmtDuration(phase.duration)}</span>
+              <span class="stat-pill cost">{fmtCost(phase.cost)}</span>
             </div>
-          {/each}
-        </div>
-      </div>
-    {/if}
+          </button>
+
+          {#if expandedPhase === phase.phase}
+            {#each phase.plans as plan}
+              <!-- Plan level -->
+              <button class="tree-row plan-row" class:expanded={expandedPlan === plan.plan} on:click={() => togglePlan(plan.plan)}>
+                <span class="tree-chevron">{expandedPlan === plan.plan ? '▾' : '▸'}</span>
+                <span class="tree-name plan-name">Plan {plan.plan}</span>
+                <div class="tree-stats">
+                  <span class="stat-pill actions">{plan.actions.length} actions</span>
+                  <span class="stat-pill duration">{fmtDuration(plan.duration)}</span>
+                  <span class="stat-pill cost">{fmtCost(plan.cost)}</span>
+                </div>
+              </button>
+
+              {#if expandedPlan === plan.plan}
+                <div class="action-list">
+                  {#each plan.actions as entry, i}
+                    {@const prevTs = i > 0 ? plan.actions[i-1].timestamp : null}
+                    {@const gap = prevTs && entry.timestamp ? new Date(entry.timestamp) - new Date(prevTs) : 0}
+                    {#if gap > 0}
+                      <div class="action-gap">
+                        <span class="gap-line"></span>
+                        <span class="gap-label">{fmtDuration(gap)}</span>
+                        <span class="gap-line"></span>
+                      </div>
+                    {/if}
+                    <div class="action-row">
+                      <span class="action-badge" style="background: {actionStyle(entry.action).bg}">{actionStyle(entry.action).label}</span>
+                      <span class="action-time">{fmtDate(entry.timestamp)} {fmtTime(entry.timestamp)}</span>
+                      {#if entry.session_cost != null && entry.session_cost > 0}
+                        <span class="action-cost">{fmtCost(entry.session_cost)}</span>
+                      {/if}
+                      {#if entry.note}
+                        <span class="action-note">{entry.note}</span>
+                      {/if}
+                    </div>
+                  {/each}
+                </div>
+              {/if}
+            {/each}
+          {/if}
+        {/each}
+      {/if}
+    {/each}
   {/if}
 </div>
 
@@ -302,125 +251,98 @@
     font-family: var(--font-mono); font-size: 12px;
   }
 
-  /* ─── Stats Row ────────────────────────────────── */
-  .stats-row {
-    display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
-    margin-bottom: 24px;
-  }
-  .stat-card {
-    background: var(--surface-2); border: 1px solid var(--hairline); border-radius: 10px;
-    padding: 16px 18px; display: flex; flex-direction: column; min-height: 88px;
-  }
-  .stat-label {
-    font-size: 10px; color: var(--ink-tertiary); margin-bottom: 6px;
-    text-transform: uppercase; letter-spacing: 0.6px; font-weight: 500;
-  }
-  .stat-value {
-    font-size: 24px; font-weight: 700; color: var(--ink);
-    font-variant-numeric: tabular-nums; line-height: 1.1;
-  }
-  .stat-value.cost { color: var(--green); }
-  .stat-value.phase-name { font-size: 15px; color: var(--accent-purple-glow); }
-  .stat-sub { font-size: 10px; color: var(--ink-tertiary); margin-top: 4px; }
-
-  @media (max-width: 800px) {
-    .stats-row { grid-template-columns: repeat(2, 1fr); }
-  }
-  @media (max-width: 500px) {
-    .stats-row { grid-template-columns: 1fr; }
-  }
-
-  /* ─── Sections ─────────────────────────────────── */
-  .section {
-    background: var(--surface-2); border: 1px solid var(--hairline); border-radius: 10px;
-    padding: 20px; margin-bottom: 16px;
-  }
-  .section h3 {
-    font-size: 13px; font-weight: 600; color: var(--ink-muted);
-    text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 16px;
-  }
-  .section-header {
-    display: flex; align-items: center; justify-content: space-between;
-    margin-bottom: 16px;
-  }
-  .section-header h3 { margin-bottom: 0; }
-  .clear-btn {
-    background: none; border: 1px solid var(--hairline); border-radius: 6px;
-    color: var(--ink-tertiary); font-size: 11px; padding: 4px 10px;
-    cursor: pointer; font-family: inherit;
-    transition: border-color 0.2s, color 0.2s;
-  }
-  .clear-btn:hover { border-color: var(--ink-subtle); color: var(--ink-muted); }
-
-  /* ─── Chart ────────────────────────────────────── */
-  .chart-container { width: 100%; min-height: 60px; }
-
-  /* ─── Drill-down ───────────────────────────────── */
-  .drill-down h3 {
-    display: flex; align-items: baseline; gap: 10px; margin-bottom: 16px;
-  }
-  .drill-phase {
-    color: var(--accent-purple-glow); font-size: 14px; font-weight: 600;
-    text-transform: none; letter-spacing: 0;
-  }
-  .drill-meta {
-    font-size: 12px; color: var(--ink-tertiary); font-weight: 400;
-    text-transform: none; letter-spacing: 0;
-  }
-
-  .action-table-wrap { overflow-x: auto; }
-  .action-table {
-    width: 100%; border-collapse: collapse; font-size: 13px;
-  }
-  .action-table th {
-    text-align: left; padding: 8px 12px; font-size: 10px;
-    text-transform: uppercase; letter-spacing: 0.5px;
-    color: var(--ink-tertiary); font-weight: 500;
+  /* ─── Tree Rows ────────────────────────────────── */
+  .tree-row {
+    display: flex; align-items: center; gap: 8px; width: 100%;
+    padding: 12px 16px; border: none; background: none;
+    font-family: inherit; font-size: 13px; color: var(--ink);
+    cursor: pointer; text-align: left;
     border-bottom: 1px solid var(--hairline);
+    transition: background 0.15s;
   }
-  .action-table th.num, .action-table td.num { text-align: right; }
-  .action-table td {
-    padding: 10px 12px; border-bottom: 1px solid var(--hairline);
-    color: var(--ink-muted);
+  .tree-row:hover { background: var(--surface-2); }
+  .tree-row.expanded { background: var(--surface-2); }
+
+  .tree-chevron {
+    font-size: 11px; color: var(--ink-tertiary); width: 14px;
+    flex-shrink: 0; text-align: center;
   }
-  .action-table tr:last-child td { border-bottom: none; }
-  .action-table td.num {
-    font-variant-numeric: tabular-nums; font-weight: 500; color: var(--ink);
+
+  .tree-name { font-weight: 500; white-space: nowrap; }
+  .project-name { font-size: 14px; color: var(--ink); }
+
+  .phase-row { padding-left: 32px; }
+  .phase-name { color: var(--accent-purple-glow); }
+
+  .plan-row { padding-left: 56px; }
+  .plan-name { color: var(--primary); font-family: var(--font-mono); font-size: 12px; }
+
+  .tree-stats {
+    display: flex; gap: 8px; margin-left: auto; align-items: center;
+    flex-shrink: 0;
+  }
+
+  .stat-pill {
+    font-size: 11px; padding: 2px 8px; border-radius: 4px;
+    font-variant-numeric: tabular-nums; white-space: nowrap;
+  }
+  .stat-pill.entries { color: var(--ink-tertiary); }
+  .stat-pill.phases { color: var(--ink-tertiary); }
+  .stat-pill.plans { color: var(--ink-tertiary); }
+  .stat-pill.actions { color: var(--ink-tertiary); }
+  .stat-pill.duration {
+    color: var(--accent-cyan); background: rgba(149, 239, 255, 0.08);
+  }
+  .stat-pill.cost {
+    color: var(--green); background: rgba(0, 202, 83, 0.08);
+    font-weight: 600;
+  }
+
+  /* ─── Action List (leaf level) ─────────────────── */
+  .action-list {
+    padding: 8px 16px 8px 80px;
+    border-bottom: 1px solid var(--hairline);
+    background: var(--surface-1);
+  }
+
+  .action-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 6px 0;
   }
 
   .action-badge {
     display: inline-block; padding: 2px 8px; border-radius: 4px;
-    font-size: 11px; font-weight: 600; color: #090A0C;
-    text-transform: capitalize;
+    font-size: 10px; font-weight: 700; color: #090A0C;
+    letter-spacing: 0.5px; min-width: 48px; text-align: center;
   }
 
-  /* ─── Ledger Log ───────────────────────────────── */
-  .ledger-log {
-    display: flex; flex-direction: column; gap: 2px;
+  .action-time {
+    font-size: 12px; color: var(--ink-subtle);
+    font-variant-numeric: tabular-nums; min-width: 110px;
   }
-  .ledger-row {
-    display: flex; align-items: center; gap: 10px; padding: 8px 4px;
-    border-radius: 6px; transition: background 0.15s;
-  }
-  .ledger-row:hover { background: var(--surface-3); }
-  .ledger-time {
-    font-size: 11px; color: var(--ink-tertiary); min-width: 60px;
+
+  .action-cost {
+    font-size: 12px; color: var(--green); font-weight: 600;
     font-variant-numeric: tabular-nums;
   }
-  .ledger-phase {
-    font-size: 12px; color: var(--ink-subtle); min-width: 80px;
-  }
-  .ledger-plan {
+
+  .action-note {
     font-size: 11px; color: var(--ink-tertiary);
-    background: var(--surface-3); padding: 1px 6px; border-radius: 3px;
-    font-family: var(--font-mono);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    max-width: 400px;
   }
-  .ledger-cost {
-    font-size: 11px; color: var(--green); font-weight: 600;
-    font-variant-numeric: tabular-nums; margin-left: auto;
+
+  /* ─── Duration Gap Indicators ──────────────────── */
+  .action-gap {
+    display: flex; align-items: center; gap: 8px;
+    padding: 2px 0;
   }
-  .ledger-note {
-    font-size: 11px; color: var(--ink-tertiary); overflow: hidden;
-    text-overflow: ellipsis; white-space: nowrap; max-width: 200px;
+  .gap-line {
+    flex: 1; height: 1px;
+    background: linear-gradient(90deg, transparent, var(--hairline), transparent);
+  }
+  .gap-label {
+    font-size: 10px; color: var(--accent-cyan); font-weight: 500;
+    white-space: nowrap;
   }
 </style>

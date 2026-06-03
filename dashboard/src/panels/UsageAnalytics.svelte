@@ -555,10 +555,6 @@
 
 <div class="main-header">
   <h2>Usage Analytics</h2>
-  <div class="sub-tabs">
-    <button class="sub-tab" class:active={activeSubTab === 'usage'} on:click={() => activeSubTab = 'usage'}>Usage Overview</button>
-    <button class="sub-tab" class:active={activeSubTab === 'cost'} on:click={() => activeSubTab = 'cost'}>Cost Attribution</button>
-  </div>
   {#if activeSubTab === 'usage'}
   <div style="display: flex; align-items: center; gap: 6px;">
     {#each [7, 30, 90] as d}
@@ -573,6 +569,10 @@
     </span>
   {/if}
   {/if}
+  <div class="sub-tabs">
+    <button class="sub-tab" class:active={activeSubTab === 'usage'} on:click={() => activeSubTab = 'usage'}>Usage Overview</button>
+    <button class="sub-tab" class:active={activeSubTab === 'cost'} on:click={() => activeSubTab = 'cost'}>Cost Attribution</button>
+  </div>
 </div>
 
 {#if activeSubTab === 'cost'}
@@ -888,7 +888,7 @@
 
 <style>
   /* ─── Sub-tab Navigation ───────────────────────── */
-  .sub-tabs { display: flex; gap: 2px; }
+  .sub-tabs { display: flex; gap: 2px; margin-left: auto; }
   .sub-tab {
     background: none; border: none; border-bottom: 2px solid transparent;
     color: var(--ink-tertiary); font-size: 12px; font-weight: 500;
