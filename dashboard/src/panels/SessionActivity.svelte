@@ -9,7 +9,7 @@
   let reconnectTimer = null;
   let reconnectDelay = 1000;
   let idCounter = 0;
-  let expandedSession = null;
+  let expandedSessions = new Set();
 
   const MAX_EVENTS = 1000;
 
@@ -153,7 +153,12 @@
   }
 
   function toggleExpand(id) {
-    expandedSession = expandedSession === id ? null : id;
+    if (expandedSessions.has(id)) {
+      expandedSessions.delete(id);
+    } else {
+      expandedSessions.add(id);
+    }
+    expandedSessions = expandedSessions; // trigger reactivity
   }
 
   const hookColors = {
@@ -221,7 +226,7 @@
               {#if session.errors > 0}
                 <span class="error-count">{session.errors} error{session.errors > 1 ? 's' : ''}</span>
               {/if}
-              <span class="expand-icon">{expandedSession === session.id ? '▾' : '▸'}</span>
+              <span class="expand-icon">{expandedSessions.has(session.id) ? '▾' : '▸'}</span>
             </div>
 
             <div class="session-stats">
@@ -255,7 +260,7 @@
             {/if}
           </button>
 
-          {#if expandedSession === session.id}
+          {#if expandedSessions.has(session.id)}
             <div class="session-events">
               {#each [...session.events].reverse() as ev (ev._id)}
                 <div class="ev-row">
