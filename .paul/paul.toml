@@ -7,15 +7,23 @@ tags = ["rust", "framework", "context-engine"]
 [milestone]
 name = "v0.1 Proactive Context Engine"
 version = "0.1.0"
-status = "in_progress"
+status = "complete"
 
 [phase]
-number = 6
-name = "CARL Absorption"
+number = 9
+name = "PAUL Integration Layer"
 status = "complete"
+plans_completed = 2
 
 [loop]
 position = "IDLE"
+
+[stats]
+total_plans = 10
+last_activity = "2026-06-03T13:26:00-05:00"
+
+[paul]
+version = "1.4"
 
 [satellite]
 groom = true
