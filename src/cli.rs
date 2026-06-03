@@ -143,6 +143,15 @@ pub enum Commands {
         /// Activation key from ChrisAI community
         key: String,
     },
+    /// Check for updates, snooze the update banner, or install available updates
+    Update {
+        /// Check for updates without installing
+        #[arg(long)]
+        check: bool,
+        /// Dismiss update banner for 24 hours
+        #[arg(long)]
+        snooze: bool,
+    },
     /// Uninstall base: remove hooks from settings.json, remove binary, remove CLAUDE.md section
     Uninstall {
         /// Also remove ~/.base-gbl/ global tier (destructive)
@@ -814,6 +823,43 @@ pub fn run() {
         Some(Commands::Activate { key }) => {
             if let Err(e) = base::manifest::activate(&key) {
                 eprintln!("{e}");
+            }
+        }
+
+        // ─── Update ───────────────────────────────────────────
+        Some(Commands::Update { check, snooze }) => {
+            if snooze {
+                if let Err(e) = base::manifest::snooze() {
+                    eprintln!("Snooze failed: {e}");
+                }
+            } else if check {
+                let mut manifest = base::manifest::Manifest::load().unwrap_or_default();
+                match base::manifest::check_for_updates(&mut manifest) {
+                    Ok(Some(pending)) => {
+                        if let Err(e) = manifest.save() {
+                            eprintln!("Failed to save manifest: {e}");
+                        }
+                        println!("Updates available: {pending}");
+                        println!("\nRun `base update` to install (coming soon).");
+                    }
+                    Ok(None) => {
+                        if let Err(e) = manifest.save() {
+                            eprintln!("Failed to save manifest: {e}");
+                        }
+                        println!("All components are up to date.");
+                    }
+                    Err(e) => eprintln!("Update check failed: {e}"),
+                }
+            } else {
+                // Bare `base update` — download not implemented yet (Phase 12)
+                let manifest = base::manifest::Manifest::load().unwrap_or_default();
+                if !manifest.update_check.pending_update.is_empty() {
+                    println!("Pending updates: {}", manifest.update_check.pending_update);
+                    println!("\nAutomatic update download coming in a future release.");
+                    println!("Use `base update --check` to refresh, or `base update --snooze` to dismiss.");
+                } else {
+                    println!("No pending updates. Run `base update --check` to check now.");
+                }
             }
         }
 

@@ -24,6 +24,9 @@ pub fn handle(config: &BaseConfig, cwd: &Path) -> Result<()> {
         println!("{}", crate::operator::format_block(&profile));
     }
 
+    // Update check + persistent banner (Phase 11)
+    check_and_banner();
+
     // Try signals first (Phase 5) — primary injection source
     if let Ok(signal_output) = crate::signal::run_signals(cwd, config)
         && !signal_output.is_empty() {
@@ -72,6 +75,47 @@ pub fn handle(config: &BaseConfig, cwd: &Path) -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Check for updates and inject persistent banner if needed. Fail-open — never blocks session.
+fn check_and_banner() {
+    let Some(mut manifest) = crate::manifest::Manifest::load() else {
+        return; // No manifest = nothing to check
+    };
+
+    let activated = manifest.is_activated();
+    let pending = &manifest.update_check.pending_update;
+
+    // If updates already known...
+    if !pending.is_empty() {
+        if !activated && !crate::manifest::is_snoozed(&manifest) {
+            // Inject banner for non-activated, non-snoozed installs
+            print!("{}", crate::manifest::format_update_banner(pending));
+        }
+        // Don't also run HTTP check — we already know about updates.
+        // Still fall through for activated installs to keep manifest current.
+        if !activated {
+            return;
+        }
+    }
+
+    // Version check (weekly, HTTP call)
+    if !crate::manifest::should_check(&manifest) {
+        return;
+    }
+
+    // Run the check — 3s timeout per endpoint, fail silently on any error
+    let result = crate::manifest::check_for_updates(&mut manifest);
+
+    // Save manifest regardless (updates last_checked)
+    let _ = manifest.save();
+
+    // If updates found and not activated, show banner
+    if let Ok(Some(ref pending)) = result {
+        if !activated {
+            print!("{}", crate::manifest::format_update_banner(pending));
+        }
+    }
 }
 
 /// Scan all registered workspaces for paul.toml files and ingest into graph. Fail-silent.

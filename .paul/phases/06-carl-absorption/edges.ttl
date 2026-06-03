@@ -1,5 +1,0 @@
-<file:../chris-ai-systems/apps/base-v2/.paul/ROADMAP.md> <http://ops-sys.local/ontology#about> <ops:base> .
-<file:../chris-ai-systems/apps/base-v2/.paul/STATE.md> <http://ops-sys.local/ontology#about> <ops:base> .
-<file:../chris-ai-systems/apps/base-v2/.paul/phases/06-carl-absorption/06-01-PLAN.md> <http://ops-sys.local/ontology#about> <ops:decisions> ;
-	<http://ops-sys.local/ontology#produces> <ops:base> .
-<file:../chris-ai-systems/apps/base-v2/.paul/phases/06-carl-absorption/CONTEXT.md> <http://ops-sys.local/ontology#about> <ops:decisions> , <ops:casegate> , <ops:base>

@@ -236,6 +236,146 @@ pub fn activate(key: &str) -> Result<()> {
     Ok(())
 }
 
+// ─── Version Check ──────────────────────────────────────────
+
+/// npm package names for each component
+const NPM_PACKAGES: &[(&str, &str)] = &[
+    ("paul", "paul-framework"),
+    ("seed", "@chrisai/seed"),
+    ("skillsmith", "@chrisai/skillsmith"),
+];
+
+const GITHUB_REPO: &str = "ChristopherKahler/base";
+const HTTP_TIMEOUT_SECS: u64 = 3;
+
+/// Check if enough time has passed since last version check.
+pub fn should_check(manifest: &Manifest) -> bool {
+    if manifest.update_check.last_checked.is_empty() {
+        return true;
+    }
+    let Ok(last) = chrono::DateTime::parse_from_rfc3339(&manifest.update_check.last_checked) else {
+        return true;
+    };
+    let elapsed = chrono::Local::now().signed_duration_since(last);
+    elapsed.num_seconds() >= manifest.update_check.ttl_seconds as i64
+}
+
+/// Check if the update banner is currently snoozed.
+pub fn is_snoozed(manifest: &Manifest) -> bool {
+    if manifest.update_check.dismissed_until.is_empty() {
+        return false;
+    }
+    let Ok(until) = chrono::DateTime::parse_from_rfc3339(&manifest.update_check.dismissed_until)
+    else {
+        return false;
+    };
+    chrono::Local::now() < until
+}
+
+/// Snooze the update banner for 24 hours.
+pub fn snooze() -> Result<()> {
+    let mut manifest = Manifest::load().unwrap_or_default();
+    let dismiss_until = chrono::Local::now() + chrono::Duration::hours(24);
+    manifest.update_check.dismissed_until = dismiss_until.to_rfc3339();
+    manifest.save()?;
+
+    println!("═══════════════════════════════════════");
+    println!("⏸ Update banner snoozed for 24 hours.");
+    println!("═══════════════════════════════════════");
+    Ok(())
+}
+
+/// Fetch latest versions from npm registry + GitHub API, compare against installed.
+/// Updates manifest in-place. Returns the pending_update string if updates found.
+pub fn check_for_updates(manifest: &mut Manifest) -> Result<Option<String>> {
+    let mut updates: Vec<String> = Vec::new();
+
+    // Check npm components
+    for &(component, package) in NPM_PACKAGES {
+        if let Some(installed) = manifest.components.get(component) {
+            if let Some(remote) = fetch_npm_version(package) {
+                if version_newer(&remote, &installed.version) {
+                    updates.push(format!("{component} {}→{remote}", installed.version));
+                }
+            }
+        }
+    }
+
+    // Check BASE via GitHub releases
+    if let Some(installed) = manifest.components.get("base") {
+        if let Some(remote) = fetch_github_version() {
+            if version_newer(&remote, &installed.version) {
+                updates.push(format!("base {}→{remote}", installed.version));
+            }
+        }
+    }
+
+    // Update last_checked
+    manifest.update_check.last_checked = chrono::Local::now().to_rfc3339();
+
+    if updates.is_empty() {
+        manifest.update_check.pending_update = String::new();
+        Ok(None)
+    } else {
+        let pending = updates.join(", ");
+        manifest.update_check.pending_update = pending.clone();
+        Ok(Some(pending))
+    }
+}
+
+/// Format the persistent update banner.
+pub fn format_update_banner(pending: &str) -> String {
+    format!(
+        "\n═══════════════════════════════════════\n\
+         🔄 ChrisAI update available\n\
+         \x20  {pending}\n\
+         \n\
+         \x20  Run: base update\n\
+         \x20  Snooze 24h: base update --snooze\n\
+         \x20  Chris AI Systems · https://chrisai.cv/skool\n\
+         ═══════════════════════════════════════\n"
+    )
+}
+
+/// Fetch latest version of an npm package. Returns None on any error.
+fn fetch_npm_version(package: &str) -> Option<String> {
+    let url = format!("https://registry.npmjs.org/{package}/latest");
+    let resp = ureq::get(&url)
+        .timeout(std::time::Duration::from_secs(HTTP_TIMEOUT_SECS))
+        .call()
+        .ok()?;
+    let json: serde_json::Value = resp.into_json().ok()?;
+    json.get("version")?.as_str().map(|s| s.to_string())
+}
+
+/// Fetch latest BASE version from GitHub releases. Returns None on any error.
+fn fetch_github_version() -> Option<String> {
+    let url = format!("https://api.github.com/repos/{GITHUB_REPO}/releases/latest");
+    let resp = ureq::get(&url)
+        .set("User-Agent", "base-update-check")
+        .timeout(std::time::Duration::from_secs(HTTP_TIMEOUT_SECS))
+        .call()
+        .ok()?;
+    let json: serde_json::Value = resp.into_json().ok()?;
+    let tag = json.get("tag_name")?.as_str()?;
+    Some(tag.strip_prefix('v').unwrap_or(tag).to_string())
+}
+
+/// Simple semver comparison: returns true if remote is newer than local.
+fn version_newer(remote: &str, local: &str) -> bool {
+    let parse = |v: &str| -> (u32, u32, u32) {
+        let parts: Vec<u32> = v.split('.').filter_map(|s| s.parse().ok()).collect();
+        (
+            parts.first().copied().unwrap_or(0),
+            parts.get(1).copied().unwrap_or(0),
+            parts.get(2).copied().unwrap_or(0),
+        )
+    };
+    let r = parse(remote);
+    let l = parse(local);
+    r > l
+}
+
 // ─── Tests ──────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -324,5 +464,53 @@ mod tests {
             ..Default::default()
         };
         assert!(!manifest.is_activated());
+    }
+
+    #[test]
+    fn version_newer_works() {
+        assert!(version_newer("1.1.0", "1.0.0"));
+        assert!(version_newer("2.0.0", "1.9.9"));
+        assert!(version_newer("1.0.1", "1.0.0"));
+        assert!(!version_newer("1.0.0", "1.0.0"));
+        assert!(!version_newer("0.9.0", "1.0.0"));
+        assert!(!version_newer("1.0.0", "1.0.1"));
+    }
+
+    #[test]
+    fn should_check_empty_last_checked() {
+        let manifest = Manifest::default();
+        assert!(should_check(&manifest));
+    }
+
+    #[test]
+    fn is_snoozed_empty() {
+        let manifest = Manifest::default();
+        assert!(!is_snoozed(&manifest));
+    }
+
+    #[test]
+    fn is_snoozed_future() {
+        let future = (chrono::Local::now() + chrono::Duration::hours(1)).to_rfc3339();
+        let manifest = Manifest {
+            update_check: UpdateCheck {
+                dismissed_until: future,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert!(is_snoozed(&manifest));
+    }
+
+    #[test]
+    fn is_snoozed_past() {
+        let past = (chrono::Local::now() - chrono::Duration::hours(1)).to_rfc3339();
+        let manifest = Manifest {
+            update_check: UpdateCheck {
+                dismissed_until: past,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert!(!is_snoozed(&manifest));
     }
 }
