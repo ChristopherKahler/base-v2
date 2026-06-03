@@ -22,7 +22,8 @@ Phases: 9 of 9 complete
 | 5 | Signal Layer (proof) | 01 | Complete ✓ | 2026-06-01 |
 | 6 | CARL Absorption | 03+ | Complete ✓ | 2026-06-01 |
 | 7 | v1 Migration + Cutover | 02 | Complete ✓ | 2026-06-02 |
-| 8 | Command Center Dashboard | 06 | In Progress (polish) | 2026-06-02 |
+| 8 | Command Center Dashboard | 07 | In Progress (polish) | 2026-06-02 |
+| 9 | PAUL Integration Layer | — | Not started | — |
 
 ## Phase Details
 
@@ -174,6 +175,27 @@ Phases: 9 of 9 complete
 - Live data: WebSocket for session activity panel, hooks append to structured log file
 - No external dependencies for the user — one command, one binary
 
+### Phase 9: PAUL Integration Layer
+
+**Goal:** BASE v2 consumes PAUL's session ledger (`ledger.toml`) to provide per-project, per-phase, per-milestone cost attribution. The missing link between "which sessions did PAUL work" and "how much did those sessions cost." PAUL produces clean timestamped ledger entries; BASE extracts them into the graph and joins against session JSONL for token/cost data.
+**Depends on:** Phase 4 (Extraction Layer), Phase 8 (Usage Analytics)
+**Coordinates with:** PAUL Framework v1.4 (Agentic OS Integration) — PAUL produces ledger.toml, BASE consumes it.
+
+**Scope:**
+
+**Plan 1: Ledger Extractor + Schema**
+- `ledger.toml` file spec (append-only, `[[entry]]` tables with action/phase/plan/timestamp/note)
+- New extractor in `src/extract/` producing `ops:LedgerEntry` triples
+- Timestamp-match join: ledger entry `at` → session JSONL time range → token/cost attribution
+- API endpoint: `/api/ops/ledger` returning entries with cost data joined
+- Integration with existing `collect_all_events()` provider pipeline
+
+**Plan 2: Cost Attribution Dashboard**
+- Per-phase cost breakdown (plan/apply/iterate/unify costs)
+- Per-milestone cost rollup
+- Per-project lifetime cost
+- Operations panel or Usage Analytics integration (TBD based on Plan 1 output)
+
 ---
 *Roadmap created: 2026-05-29*
-*Last updated: 2026-06-02 — Phase 8 scoped as Command Center Dashboard*
+*Last updated: 2026-06-03 — Phase 9 added (PAUL Integration Layer)*
