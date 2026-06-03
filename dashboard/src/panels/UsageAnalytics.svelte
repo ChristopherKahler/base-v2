@@ -577,12 +577,10 @@
   </div>
 </div>
 
-{#if activeSubTab === 'cost'}
-  <div class="main-content">
-    <CostAttribution />
-  </div>
-{:else}
-<div class="main-content">
+<div class="main-content" style:display={activeSubTab === 'cost' ? 'block' : 'none'}>
+  <CostAttribution />
+</div>
+<div class="main-content" style:display={activeSubTab === 'usage' ? '' : 'none'}>
   {#if loading}
     <div class="loading">Parsing session data...</div>
   {:else if !summary || summary.session_count === 0}
@@ -886,7 +884,6 @@
     </div>
   {/if}
 </div>
-{/if}
 
 <style>
   /* ─── Sub-tab Navigation ───────────────────────── */
