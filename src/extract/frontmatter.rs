@@ -3,6 +3,12 @@ use crate::config::NamespaceConfig;
 /// Extract YAML frontmatter and markdown body content into (predicate, value) triples.
 /// Returns None if no valid frontmatter found.
 pub fn extract(content: &str, file_path: &str, ns: &NamespaceConfig) -> Option<Vec<(String, String)>> {
+    extract_with_project(content, file_path, ns, None)
+}
+
+/// Extract with an optional project slug override for .paul/ docs
+/// whose path starts at .paul/ (no parent directory to derive from).
+pub fn extract_with_project(content: &str, file_path: &str, ns: &NamespaceConfig, project_hint: Option<&str>) -> Option<Vec<(String, String)>> {
     let fm = parse_frontmatter(content)?;
     if fm.is_empty() {
         return None;
@@ -75,17 +81,25 @@ pub fn extract(content: &str, file_path: &str, ns: &NamespaceConfig) -> Option<V
 
     // Auto-link .paul/ documents to their project
     if file_path.contains(".paul/") {
-        // Link to project via paul.json-derived slug or path-derived slug
-        let project_slug = file_path
+        // Derive project slug from path before .paul/, or use project_hint from cwd
+        let path_derived = file_path
             .split(".paul/")
             .next()
             .unwrap_or("")
             .trim_end_matches('/')
             .rsplit('/')
             .next()
-            .unwrap_or("unknown")
+            .unwrap_or("")
             .replace([' ', '.'], "-")
             .to_lowercase();
+
+        let project_slug = if !path_derived.is_empty() {
+            path_derived
+        } else if let Some(hint) = project_hint {
+            hint.to_lowercase().replace([' ', '.'], "-")
+        } else {
+            "unknown".to_string()
+        };
 
         if !project_slug.is_empty() && project_slug != "unknown" {
             triples.push((

@@ -825,6 +825,22 @@ async fn handle_ws_session(mut socket: WebSocket, state: Arc<AppState>) {
 
 // ─── Usage Analytics ────────────────────────────────────────
 
+/// Normalized usage event — all providers produce these.
+/// Phase 9 will add parse_codex(), parse_gemini(), etc. that return Vec<UsageEvent>.
+#[derive(Clone)]
+struct UsageEvent {
+    provider: String,
+    model: String,
+    input_tokens: u64,
+    output_tokens: u64,
+    cache_read: u64,
+    cache_write: u64,
+    cost: f64,
+    timestamp: String,
+    project: String,
+    session_id: String,
+}
+
 #[derive(Serialize, Clone)]
 pub struct UsageSummary {
     pub total_input: u64,
@@ -833,6 +849,9 @@ pub struct UsageSummary {
     pub total_cache_write: u64,
     pub estimated_cost_usd: f64,
     pub session_count: usize,
+    pub active_days: u32,
+    pub cost_per_day: f64,
+    pub top_model: String,
     pub models: std::collections::HashMap<String, ModelUsage>,
     pub daily: Vec<DailyUsage>,
 }
@@ -852,6 +871,9 @@ pub struct DailyUsage {
     pub date: String,
     pub input: u64,
     pub output: u64,
+    pub cache_read: u64,
+    pub cache_write: u64,
+    pub sources: usize,
     pub cost: f64,
 }
 
@@ -868,6 +890,16 @@ pub struct SessionUsageEntry {
     pub messages: usize,
 }
 
+#[derive(Serialize, Clone)]
+pub struct ProjectUsage {
+    pub project: String,
+    pub provider: String,
+    pub total_tokens: u64,
+    pub cost: f64,
+    pub event_count: usize,
+    pub last_active: String,
+}
+
 fn estimate_cost(model: &str, input: u64, output: u64, cache_read: u64, cache_write: u64) -> f64 {
     let (inp_rate, out_rate, cr_rate, cw_rate) = if model.contains("opus") {
         (15.0, 75.0, 1.5, 18.75)
@@ -882,12 +914,133 @@ fn estimate_cost(model: &str, input: u64, output: u64, cache_read: u64, cache_wr
         / 1_000_000.0
 }
 
-fn parse_usage_data(days: u32) -> (UsageSummary, Vec<SessionUsageEntry>) {
-    use std::collections::HashMap;
+// ─── Provider: Claude Code ─────────────────────────────────
+// Each provider returns Vec<UsageEvent>. Phase 9 adds more providers here.
 
+/// Resolve project name from cwd path: `/home/user/chris-ai-systems/apps/base-v2` → `base-v2`
+fn resolve_project_name(cwd: &str) -> String {
+    let path = std::path::Path::new(cwd);
+    path.file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+/// Fallback: parse directory name like `-home-chriskahler-chris-ai-systems` → `chris-ai-systems`
+fn project_from_dir_name(dir_name: &str) -> String {
+    // Directory format: path with `/` → `-` and leading `-`
+    // Reconstruct path, take last component
+    let trimmed = dir_name.trim_start_matches('-');
+    // Best-effort: try to find a recognizable project boundary
+    // Look for common parent dirs (apps-, clients-, home-user-)
+    for marker in ["apps-", "clients-", "production-"] {
+        if let Some(pos) = trimmed.rfind(marker) {
+            let after = &trimmed[pos + marker.len()..];
+            if !after.is_empty() { return after.to_string(); }
+        }
+    }
+    // Fallback: take everything after the last path-like separator
+    // Heuristic: find the last segment that looks like a project name
+    trimmed.rsplit('-').take(1).next().unwrap_or("unknown").to_string()
+}
+
+fn parse_claude_code(days: u32) -> Vec<UsageEvent> {
     let claude_dir = dirs::home_dir()
         .map(|h| h.join(".claude").join("projects"))
         .unwrap_or_default();
+
+    let cutoff = chrono::Local::now() - chrono::Duration::days(days as i64);
+    let cutoff_str = cutoff.format("%Y-%m-%dT").to_string();
+
+    let mut events = Vec::new();
+    let Ok(projects) = std::fs::read_dir(&claude_dir) else { return events };
+
+    for project_dir in projects.flatten() {
+        if !project_dir.path().is_dir() { continue; }
+
+        let dir_fallback = project_from_dir_name(
+            &project_dir.file_name().to_string_lossy()
+        );
+
+        let Ok(files) = std::fs::read_dir(project_dir.path()) else { continue };
+
+        for file in files.flatten() {
+            let path = file.path();
+            if path.extension().is_none_or(|e| e != "jsonl") { continue; }
+
+            // No mtime filter — read ALL files, filter by content timestamp
+
+            let session_id = path.file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_default();
+
+            let Ok(content) = std::fs::read_to_string(&path) else { continue };
+
+            let mut session_project = dir_fallback.clone();
+            let mut cwd_resolved = false;
+
+            for line in content.lines() {
+                let Ok(val) = serde_json::from_str::<serde_json::Value>(line) else { continue };
+
+                // Extract cwd from any event for project name (first one wins)
+                if !cwd_resolved {
+                    if let Some(cwd) = val.get("cwd").and_then(|c| c.as_str()) {
+                        if !cwd.is_empty() {
+                            session_project = resolve_project_name(cwd);
+                            cwd_resolved = true;
+                        }
+                    }
+                }
+
+                let Some(msg) = val.get("message") else { continue };
+                let Some(usage) = msg.get("usage") else { continue };
+
+                let ts = val.get("timestamp").and_then(|t| t.as_str()).unwrap_or("");
+
+                // Filter by timestamp — skip events outside the time window
+                if !ts.is_empty() && ts < cutoff_str.as_str() { continue; }
+
+                let model = msg.get("model").and_then(|m| m.as_str()).unwrap_or("unknown").to_string();
+                let inp = usage.get("input_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
+                let out = usage.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
+                let cr = usage.get("cache_read_input_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
+                let cw = usage.get("cache_creation_input_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
+                let cost = estimate_cost(&model, inp, out, cr, cw);
+
+                events.push(UsageEvent {
+                    provider: "Claude Code".to_string(),
+                    model,
+                    input_tokens: inp,
+                    output_tokens: out,
+                    cache_read: cr,
+                    cache_write: cw,
+                    cost,
+                    timestamp: ts.to_string(),
+                    project: session_project.clone(),
+                    session_id: session_id.clone(),
+                });
+            }
+        }
+    }
+
+    events
+}
+
+// ─── Multi-provider dispatcher ─────────────────────────────
+
+fn collect_all_events(days: u32) -> Vec<UsageEvent> {
+    let mut all = parse_claude_code(days);
+    // Phase 9: all.extend(parse_codex(days));
+    // Phase 9: all.extend(parse_gemini(days));
+    // Phase 9: all.extend(parse_open_code(days));
+    // Phase 9: all.extend(parse_cursor(days));
+    all.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
+    all
+}
+
+// ─── Provider-agnostic aggregation ─────────────────────────
+
+fn aggregate_usage(events: &[UsageEvent], days: u32) -> (UsageSummary, Vec<SessionUsageEntry>, Vec<ProjectUsage>) {
+    use std::collections::HashMap;
 
     let cutoff = chrono::Local::now() - chrono::Duration::days(days as i64);
     let cutoff_str = cutoff.format("%Y-%m-%d").to_string();
@@ -898,135 +1051,124 @@ fn parse_usage_data(days: u32) -> (UsageSummary, Vec<SessionUsageEntry>) {
     let mut total_cache_write = 0u64;
     let mut total_cost = 0.0f64;
     let mut models: HashMap<String, ModelUsage> = HashMap::new();
-    let mut daily_map: HashMap<String, (u64, u64, f64)> = HashMap::new();
-    let mut sessions: Vec<SessionUsageEntry> = Vec::new();
+    // daily_map: date -> (input, output, cache_read, cache_write, sources, cost)
+    let mut daily_map: HashMap<String, (u64, u64, u64, u64, usize, f64)> = HashMap::new();
+    // session_map: session_id -> accumulated session data
+    let mut session_map: HashMap<String, (String, String, u64, u64, u64, u64, String, usize)> = HashMap::new();
+    // project_map: project -> (provider, total_tokens, cost, event_count, last_active)
+    let mut project_map: HashMap<String, (String, u64, f64, usize, String)> = HashMap::new();
 
-    let Ok(projects) = std::fs::read_dir(&claude_dir) else {
-        return (UsageSummary {
-            total_input: 0, total_output: 0, total_cache_read: 0, total_cache_write: 0,
-            estimated_cost_usd: 0.0, session_count: 0, models: HashMap::new(), daily: Vec::new(),
-        }, Vec::new());
-    };
+    for ev in events {
+        total_input += ev.input_tokens;
+        total_output += ev.output_tokens;
+        total_cache_read += ev.cache_read;
+        total_cache_write += ev.cache_write;
+        total_cost += ev.cost;
 
-    for project_dir in projects.flatten() {
-        if !project_dir.path().is_dir() { continue; }
+        // Model aggregation
+        let m = models.entry(ev.model.clone()).or_default();
+        m.input += ev.input_tokens;
+        m.output += ev.output_tokens;
+        m.cache_read += ev.cache_read;
+        m.cache_write += ev.cache_write;
+        m.cost += ev.cost;
+        m.count += 1;
 
-        let project_name = project_dir.file_name().to_string_lossy()
-            .split('-').last().unwrap_or("unknown").to_string();
-
-        let Ok(files) = std::fs::read_dir(project_dir.path()) else { continue };
-
-        for file in files.flatten() {
-            let path = file.path();
-            if path.extension().is_none_or(|e| e != "jsonl") { continue; }
-
-            // Skip old files by mtime
-            if let Ok(meta) = std::fs::metadata(&path) {
-                if let Ok(modified) = meta.modified() {
-                    let age = modified.elapsed().unwrap_or_default();
-                    if age > std::time::Duration::from_secs(days as u64 * 24 * 3600) { continue; }
-                }
+        // Daily aggregation
+        if ev.timestamp.len() >= 10 {
+            let date = &ev.timestamp[..10];
+            if date >= cutoff_str.as_str() {
+                let entry = daily_map.entry(date.to_string()).or_insert((0, 0, 0, 0, 0, 0.0));
+                entry.0 += ev.input_tokens;
+                entry.1 += ev.output_tokens;
+                entry.2 += ev.cache_read;
+                entry.3 += ev.cache_write;
+                entry.4 += 1;
+                entry.5 += ev.cost;
             }
+        }
 
-            let session_id = path.file_stem()
-                .map(|s| s.to_string_lossy().to_string())
-                .unwrap_or_default();
+        // Session aggregation
+        let sess = session_map.entry(ev.session_id.clone()).or_insert_with(|| {
+            (ev.project.clone(), ev.model.clone(), 0, 0, 0, 0, ev.timestamp.clone(), 0)
+        });
+        sess.2 += ev.input_tokens;
+        sess.3 += ev.output_tokens;
+        sess.4 += ev.cache_read;
+        sess.5 += ev.cache_write;
+        sess.7 += 1;
+        if sess.6.is_empty() && !ev.timestamp.is_empty() {
+            sess.6 = ev.timestamp.clone();
+        }
 
-            let Ok(content) = std::fs::read_to_string(&path) else { continue };
-
-            let mut sess_input = 0u64;
-            let mut sess_output = 0u64;
-            let mut sess_cache_read = 0u64;
-            let mut sess_cache_write = 0u64;
-            let mut sess_model = String::new();
-            let mut sess_started = String::new();
-            let mut sess_msgs = 0usize;
-
-            for line in content.lines() {
-                let Ok(val) = serde_json::from_str::<serde_json::Value>(line) else { continue };
-
-                let Some(msg) = val.get("message") else { continue };
-                let Some(usage) = msg.get("usage") else { continue };
-
-                let model = msg.get("model").and_then(|m| m.as_str()).unwrap_or("unknown");
-                let inp = usage.get("input_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
-                let out = usage.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
-                let cr = usage.get("cache_read_input_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
-                let cw = usage.get("cache_creation_input_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
-
-                let cost = estimate_cost(model, inp, out, cr, cw);
-
-                total_input += inp;
-                total_output += out;
-                total_cache_read += cr;
-                total_cache_write += cw;
-                total_cost += cost;
-
-                sess_input += inp;
-                sess_output += out;
-                sess_cache_read += cr;
-                sess_cache_write += cw;
-                sess_msgs += 1;
-                if sess_model.is_empty() { sess_model = model.to_string(); }
-
-                // Extract timestamp for daily aggregation
-                if let Some(ts) = val.get("timestamp").and_then(|t| t.as_str()) {
-                    let date = &ts[..10.min(ts.len())];
-                    if date >= cutoff_str.as_str() {
-                        let entry = daily_map.entry(date.to_string()).or_insert((0, 0, 0.0));
-                        entry.0 += inp;
-                        entry.1 += out;
-                        entry.2 += cost;
-                    }
-                    if sess_started.is_empty() { sess_started = ts.to_string(); }
-                }
-
-                let m = models.entry(model.to_string()).or_default();
-                m.input += inp;
-                m.output += out;
-                m.cache_read += cr;
-                m.cache_write += cw;
-                m.cost += cost;
-                m.count += 1;
-            }
-
-            if sess_msgs > 0 {
-                sessions.push(SessionUsageEntry {
-                    session_id,
-                    project: project_name.clone(),
-                    model: sess_model,
-                    input: sess_input,
-                    output: sess_output,
-                    cache_read: sess_cache_read,
-                    cost: estimate_cost("", sess_input, sess_output, sess_cache_read, sess_cache_write),
-                    started: sess_started,
-                    messages: sess_msgs,
-                });
-            }
+        // Project aggregation
+        let proj = project_map.entry(ev.project.clone()).or_insert_with(|| {
+            (ev.provider.clone(), 0, 0.0, 0, String::new())
+        });
+        proj.1 += ev.input_tokens + ev.output_tokens;
+        proj.2 += ev.cost;
+        proj.3 += 1;
+        if ev.timestamp > proj.4 {
+            proj.4 = ev.timestamp.clone();
         }
     }
 
-    // Sort daily by date
+    // Build daily vec
     let mut daily: Vec<DailyUsage> = daily_map.into_iter()
-        .map(|(date, (input, output, cost))| DailyUsage { date, input, output, cost })
+        .map(|(date, (input, output, cache_read, cache_write, sources, cost))| {
+            DailyUsage { date, input, output, cache_read, cache_write, sources, cost }
+        })
         .collect();
     daily.sort_by(|a, b| a.date.cmp(&b.date));
 
-    // Sort sessions newest-first (no cap — show all within the time window)
+    // Build sessions vec
+    let mut sessions: Vec<SessionUsageEntry> = session_map.into_iter()
+        .map(|(session_id, (project, model, input, output, cache_read, cache_write, started, messages))| {
+            SessionUsageEntry {
+                session_id, project, model, input, output, cache_read,
+                cost: estimate_cost("", input, output, cache_read, cache_write),
+                started, messages,
+            }
+        })
+        .collect();
     sessions.sort_by(|a, b| b.started.cmp(&a.started));
+
+    // Build projects vec
+    let mut projects: Vec<ProjectUsage> = project_map.into_iter()
+        .map(|(project, (provider, total_tokens, cost, event_count, last_active))| {
+            ProjectUsage { project, provider, total_tokens, cost, event_count, last_active }
+        })
+        .collect();
+    projects.sort_by(|a, b| b.cost.partial_cmp(&a.cost).unwrap_or(std::cmp::Ordering::Equal));
+
+    // Compute derived summary fields
+    let active_days = daily.len() as u32;
+    let cost_rounded = (total_cost * 100.0).round() / 100.0;
+    let cost_per_day = if active_days > 0 {
+        (cost_rounded / active_days as f64 * 100.0).round() / 100.0
+    } else {
+        0.0
+    };
+    let top_model = models.iter()
+        .max_by_key(|(_, m)| m.input + m.output)
+        .map(|(name, _)| name.clone())
+        .unwrap_or_default();
 
     let summary = UsageSummary {
         total_input,
         total_output,
         total_cache_read,
         total_cache_write,
-        estimated_cost_usd: (total_cost * 100.0).round() / 100.0,
+        estimated_cost_usd: cost_rounded,
         session_count: sessions.len(),
+        active_days,
+        cost_per_day,
+        top_model,
         models,
         daily,
     };
 
-    (summary, sessions)
+    (summary, sessions, projects)
 }
 
 #[derive(Deserialize)]
@@ -1035,13 +1177,24 @@ pub struct UsageQuery {
 }
 
 pub async fn usage_summary(Query(q): Query<UsageQuery>) -> Json<UsageSummary> {
-    let (summary, _) = parse_usage_data(q.days.unwrap_or(30));
+    let days = q.days.unwrap_or(30);
+    let events = collect_all_events(days);
+    let (summary, _, _) = aggregate_usage(&events, days);
     Json(summary)
 }
 
 pub async fn usage_sessions(Query(q): Query<UsageQuery>) -> Json<Vec<SessionUsageEntry>> {
-    let (_, sessions) = parse_usage_data(q.days.unwrap_or(30));
+    let days = q.days.unwrap_or(30);
+    let events = collect_all_events(days);
+    let (_, sessions, _) = aggregate_usage(&events, days);
     Json(sessions)
+}
+
+pub async fn usage_projects(Query(q): Query<UsageQuery>) -> Json<Vec<ProjectUsage>> {
+    let days = q.days.unwrap_or(30);
+    let events = collect_all_events(days);
+    let (_, _, projects) = aggregate_usage(&events, days);
+    Json(projects)
 }
 
 // ─── Graph Reload ───────────────────────────────────────────
@@ -1279,7 +1432,9 @@ pub async fn delete_rule(
 pub async fn export_usage_csv(Query(q): Query<UsageQuery>) -> axum::response::Response {
     use axum::http::header;
 
-    let (_, sessions) = parse_usage_data(q.days.unwrap_or(30));
+    let days = q.days.unwrap_or(30);
+    let events = collect_all_events(days);
+    let (_, sessions, _) = aggregate_usage(&events, days);
     let mut csv = String::from("session_id,project,model,input_tokens,output_tokens,cost_usd,started,messages\n");
     for s in &sessions {
         csv.push_str(&format!(

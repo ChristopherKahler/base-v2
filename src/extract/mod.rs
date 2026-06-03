@@ -62,10 +62,53 @@ pub fn sync(cwd: &Path, config: &BaseConfig, incremental: bool) -> Result<SyncRe
             }
         };
 
+        // Derive project hint from cwd for .paul/ docs that start at root
+        let project_hint = cwd.file_name()
+            .map(|n| n.to_string_lossy().to_string());
+
         let triples = if rel_path.ends_with("paul.json") {
-            paul_json::extract(&content, &rel_path, ns)
+            // Skip paul.json if paul.toml exists in the same dir (toml takes priority)
+            let toml_sibling = file_path.with_file_name("paul.toml");
+            if toml_sibling.exists() {
+                report.skipped += 1;
+                continue;
+            }
+            // Override IRI: paul.json creates a Project entity, not a Document
+            if let Some(t) = paul_json::extract(&content, &rel_path, ns) {
+                // Extract project name to build project/ IRI
+                if let Some((_, name_val)) = t.iter().find(|(p, _)| p.contains(":name")) {
+                    let raw_name = name_val.trim_matches('"');
+                    let project_slug = crate::crud::slugify(raw_name);
+                    let project_iri = crate::crud::build_iri(ns, "project", &project_slug);
+
+                    // Delete old document-style IRI for this file
+                    let del_old = format!("{prefixes}\nDELETE WHERE {{ GRAPH <{graph_iri}> {{ <{file_iri}> ?p ?o }} }}");
+                    let _ = store.update(&del_old);
+
+                    // Delete existing project triples (idempotent re-extract)
+                    let del_proj = format!("{prefixes}\nDELETE WHERE {{ GRAPH <{graph_iri}> {{ <{project_iri}> ?p ?o }} }}");
+                    let _ = store.update(&del_proj);
+
+                    // Insert triples under the project IRI
+                    let now = crud::now_iso();
+                    let p = &ns.prefix;
+                    let mut body = String::new();
+                    for (pred, val) in &t {
+                        body.push_str(&format!("    <{project_iri}> {pred} {val} .\n"));
+                    }
+                    body.push_str(&format!("    <{project_iri}> {p}:lastExtracted \"{now}\"^^xsd:dateTime .\n"));
+                    let ins = format!("{prefixes}\nINSERT DATA {{ GRAPH <{graph_iri}> {{\n{body}}} }}");
+                    if store.update(&ins).is_ok() {
+                        report.extracted += 1;
+                    }
+                    continue;
+                }
+                Some(t)
+            } else {
+                None
+            }
         } else if rel_path.ends_with(".md") {
-            frontmatter::extract(&content, &rel_path, ns)
+            frontmatter::extract_with_project(&content, &rel_path, ns, project_hint.as_deref())
         } else {
             None
         };

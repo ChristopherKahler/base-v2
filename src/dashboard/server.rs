@@ -67,6 +67,7 @@ pub async fn start(port: u16, cwd: PathBuf) {
         // Usage Analytics
         .route("/api/usage/summary", get(super::api::usage_summary))
         .route("/api/usage/sessions", get(super::api::usage_sessions))
+        .route("/api/usage/projects", get(super::api::usage_projects))
         // Graph management
         .route("/api/graph/reload", post(super::api::reload_graph))
         .route("/api/graph/entity", post(super::api::create_entity))

@@ -5,18 +5,18 @@
 See: .paul/PROJECT.md (updated 2026-06-01)
 
 **Core value:** Proactive, deterministic context-injection engine — suppression, not detection. The gate that stays silent until the one thing that matters changes.
-**Current focus:** Phase 8 in progress. Dashboard: Graph Explorer + Operations (drag-drop kanban) + Session Activity (WebSocket) live. Usage Analytics next.
+**Current focus:** Phase 8 polish in progress. Usage Analytics at TokenBBQ-competitive level. Extraction fixes shipped. More polish plans coming.
 
 ## Current Position
 
 Milestone: v0.1 Proactive Context Engine
-Phase: 8 of 8 (Command Center Dashboard) — Complete ✓
-Plan: 08-05 complete. Phase 8 complete. Milestone complete.
-Status: All loops closed.
-Last activity: 2026-06-02 17:23 — Plan 08-05 shipped (12 dashboard enhancements)
+Phase: 8 of 8 (Command Center Dashboard) — Polish in progress
+Plan: 08-06 complete. Phase 8 continues (more polish plans).
+Status: Loop closed. Ready for next plan.
+Last activity: 2026-06-03 10:02 — Plan 08-06 unified (Usage Analytics Parity + Extraction Fixes)
 
 Progress:
-- Milestone: [██████████] 100% ✓
+- Milestone: [█████████░] 95%
 - Phase 0: [██████████] 100% ✓
 - Phase 1: [██████████] 100% ✓
 - Phase 2: [██████████] 100% ✓
@@ -25,14 +25,14 @@ Progress:
 - Phase 5: [██████████] 100% ✓
 - Phase 6: [██████████] 100% ✓
 - Phase 7: [██████████] 100% ✓
-- Phase 8: [██████████] 100% ✓
+- Phase 8: [█████████░] 92% (polish plans in progress)
 
 ## Loop Position
 
 Current loop state:
 ```
 PLAN ──▶ APPLY ──▶ UNIFY
-  ✓        ✓        ✓     [Plan 08-05 complete — Phase 8 complete — v0.1 MILESTONE COMPLETE]
+  ✓        ✓        ✓     [Plan 08-06 complete — Phase 8 continues with more polish]
 ```
 
 ## Accumulated Context
@@ -77,10 +77,10 @@ Branch: main
 
 ## Session Continuity
 
-Last session: 2026-06-02 17:23
-Stopped at: v0.1 Proactive Context Engine — MILESTONE COMPLETE
-Next action: /paul:complete-milestone or /paul:milestone for v0.2
-Resume file: .paul/phases/08-command-center-dashboard/08-05-SUMMARY.md
+Last session: 2026-06-03 10:02
+Stopped at: Plan 08-06 unified — Usage Analytics Parity + Extraction Fixes
+Next action: /paul:plan (next polish plan in Phase 8 — dashboard + PAUL integration improvements)
+Resume file: .paul/phases/08-command-center-dashboard/08-06-SUMMARY.md
 
 ---
 *STATE.md — Updated after every significant action*

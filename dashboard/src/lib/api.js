@@ -93,6 +93,11 @@ export async function getUsageSessions(days = 30) {
   catch { return []; }
 }
 
+export async function getUsageProjects(days = 30) {
+  try { const r = await fetch(`${BASE}/api/usage/projects?days=${days}`); return r.ok ? await r.json() : []; }
+  catch { return []; }
+}
+
 export async function reloadGraph() {
   try {
     const r = await fetch(`${BASE}/api/graph/reload`, { method: 'POST' });
