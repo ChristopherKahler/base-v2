@@ -19,14 +19,13 @@
   function buildSessions(evts) {
     if (evts.length === 0) return [];
 
-    const groups = [];
-    let current = null;
+    // Group by session_id — each distinct session_id is its own card
+    const sessionMap = new Map();
 
-    // Events arrive newest-first, so iterate in reverse to build chronologically
-    for (let i = evts.length - 1; i >= 0; i--) {
-      const ev = evts[i];
-      if (ev.hook === 'session-start') {
-        current = {
+    for (const ev of evts) {
+      const sid = ev.session_id || '_unknown';
+      if (!sessionMap.has(sid)) {
+        sessionMap.set(sid, {
           startTs: ev.ts,
           sessionId: ev.session_id || null,
           prompts: 0,
@@ -37,31 +36,14 @@
           errors: 0,
           events: [],
           maxPromptNum: 0,
-        };
-        groups.push(current);
+        });
       }
-      if (!current) {
-        current = {
-          startTs: ev.ts,
-          sessionId: ev.session_id || null,
-          prompts: 0,
-          toolCalls: 0,
-          domains: new Set(),
-          rulesInjected: 0,
-          suppressed: 0,
-          errors: 0,
-          events: [],
-          maxPromptNum: 0,
-        };
-        groups.push(current);
-      }
-      // Capture session_id from any event if not set yet
-      if (!current.sessionId && ev.session_id) {
-        current.sessionId = ev.session_id;
-      }
-
+      const current = sessionMap.get(sid);
       current.events.push(ev);
       if (!ev.success) current.errors++;
+
+      // Update start timestamp to earliest event
+      if (ev.ts < current.startTs) current.startTs = ev.ts;
 
       if (ev.hook === 'user-prompt-submit') {
         current.prompts++;
@@ -78,8 +60,19 @@
       }
     }
 
-    // Convert Sets to arrays, compute durations and brackets, reverse so newest is first
-    return groups.reverse().map((s, i) => {
+    // Sort events within each session chronologically
+    for (const s of sessionMap.values()) {
+      s.events.sort((a, b) => (a.ts || '').localeCompare(b.ts || ''));
+    }
+
+    // Convert to array, sort by most recent activity first
+    const groups = [...sessionMap.values()].sort((a, b) => {
+      const aLast = a.events[a.events.length - 1]?.ts || '';
+      const bLast = b.events[b.events.length - 1]?.ts || '';
+      return bLast.localeCompare(aLast);
+    });
+
+    return groups.map((s, i) => {
       const n = s.maxPromptNum;
       let bracket = null;
       if (n > 0) {
