@@ -2,7 +2,9 @@
   import { onMount, onDestroy } from 'svelte';
   import { getUsageSummary, getUsageSessions, getUsageProjects, exportUsageCsv } from '../lib/api.js';
   import * as d3 from 'd3';
+  import CostAttribution from './CostAttribution.svelte';
 
+  let activeSubTab = 'usage';
   let summary = null;
   let sessions = [];
   let projects = [];
@@ -553,6 +555,11 @@
 
 <div class="main-header">
   <h2>Usage Analytics</h2>
+  <div class="sub-tabs">
+    <button class="sub-tab" class:active={activeSubTab === 'usage'} on:click={() => activeSubTab = 'usage'}>Usage Overview</button>
+    <button class="sub-tab" class:active={activeSubTab === 'cost'} on:click={() => activeSubTab = 'cost'}>Cost Attribution</button>
+  </div>
+  {#if activeSubTab === 'usage'}
   <div style="display: flex; align-items: center; gap: 6px;">
     {#each [7, 30, 90] as d}
       <button class="graph-btn" class:active={days === d} on:click={() => setDays(d)}>{d}d</button>
@@ -565,8 +572,14 @@
       Last {days}d · {filteredSessions.length} sessions
     </span>
   {/if}
+  {/if}
 </div>
 
+{#if activeSubTab === 'cost'}
+  <div class="main-content">
+    <CostAttribution />
+  </div>
+{:else}
 <div class="main-content">
   {#if loading}
     <div class="loading">Parsing session data...</div>
@@ -871,8 +884,22 @@
     </div>
   {/if}
 </div>
+{/if}
 
 <style>
+  /* ─── Sub-tab Navigation ───────────────────────── */
+  .sub-tabs { display: flex; gap: 2px; }
+  .sub-tab {
+    background: none; border: none; border-bottom: 2px solid transparent;
+    color: var(--ink-tertiary); font-size: 12px; font-weight: 500;
+    padding: 4px 12px 6px; cursor: pointer; font-family: inherit;
+    transition: color 0.2s, border-color 0.2s;
+  }
+  .sub-tab:hover { color: var(--ink-muted); }
+  .sub-tab.active {
+    color: var(--accent-purple); border-bottom-color: var(--accent-purple);
+  }
+
   /* ═══════════════════════════════════════════════════
      Usage Analytics — Clean Design System
      Inspired by TokenBBQ · Dark canvas · Orange accent

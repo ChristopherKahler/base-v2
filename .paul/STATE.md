@@ -5,18 +5,18 @@
 See: .paul/PROJECT.md (updated 2026-06-01)
 
 **Core value:** Proactive, deterministic context-injection engine — suppression, not detection. The gate that stays silent until the one thing that matters changes.
-**Current focus:** Phase 9 Plan 01 complete. Ledger extractor + cost API shipped. Session Activity bug hotfixed. Next: Plan 09-02 (cost dashboard UI) or more Phase 8 polish.
+**Current focus:** v0.1 Proactive Context Engine MILESTONE COMPLETE. All 9 phases shipped. Phase 8 has optional polish remaining.
 
 ## Current Position
 
-Milestone: v0.1 Proactive Context Engine
-Phase: 9 of 9+ (PAUL Integration Layer) — In progress
-Plan: 09-01 complete. Ready for next plan.
-Status: Loop closed.
-Last activity: 2026-06-03 11:50 — Plan 09-01 unified (Ledger Extractor + Cost Join)
+Milestone: v0.1 Proactive Context Engine — COMPLETE ✓
+Phase: 9 of 9 (PAUL Integration Layer) — Complete ✓
+Plan: 09-02 complete. Loop closed.
+Status: Milestone complete. Phase 8 polish optional.
+Last activity: 2026-06-03 12:31 — Plan 09-02 unified (Cost Attribution Dashboard)
 
 Progress:
-- Milestone: [█████████░] 97%
+- Milestone: [██████████] 100% ✓
 - Phase 0: [██████████] 100% ✓
 - Phase 1: [██████████] 100% ✓
 - Phase 2: [██████████] 100% ✓
@@ -25,15 +25,15 @@ Progress:
 - Phase 5: [██████████] 100% ✓
 - Phase 6: [██████████] 100% ✓
 - Phase 7: [██████████] 100% ✓
-- Phase 8: [█████████░] 94% (polish paused)
-- Phase 9: [█████░░░░░] 50%
+- Phase 8: [█████████░] 94% (polish paused — optional)
+- Phase 9: [██████████] 100% ✓
 
 ## Loop Position
 
 Current loop state:
 ```
 PLAN ──▶ APPLY ──▶ UNIFY
-  ✓        ✓        ✓     [Plan 09-01 complete]
+  ✓        ✓        ✓     [Plan 09-02 complete — milestone done]
 ```
 
 ## Accumulated Context
@@ -78,10 +78,10 @@ Branch: main
 
 ## Session Continuity
 
-Last session: 2026-06-03 11:50
-Stopped at: Plan 09-01 unified — Ledger Extractor + Cost Join
-Next action: /paul:plan (Plan 09-02 cost dashboard UI, or return to Phase 8 polish)
-Resume file: .paul/phases/09-paul-integration-layer/09-01-SUMMARY.md
+Last session: 2026-06-03 12:31
+Stopped at: Plan 09-02 unified — Milestone v0.1 complete
+Next action: Git commit + optional Phase 8 polish or new milestone
+Resume file: .paul/phases/09-paul-integration-layer/09-02-SUMMARY.md
 
 ---
 *STATE.md — Updated after every significant action*
