@@ -9,6 +9,7 @@
   let loading = true;
   let viewMode = 'kanban';
   let filterProject = '';
+  let showClosedProjects = false;
 
   // ─── Create Task Modal ────────────────────────────────────
   let showCreateModal = false;
@@ -330,8 +331,14 @@
 
       <!-- PROJECTS -->
       <div class="ops-card">
-        <div class="ops-card-header"><h4>Projects</h4></div>
-        {#each projects as proj}
+        <div class="ops-card-header">
+          <h4>Projects</h4>
+          <div class="ops-project-toggle">
+            <button class="ops-toggle-btn" class:active={!showClosedProjects} on:click={() => showClosedProjects = false}>Open</button>
+            <button class="ops-toggle-btn" class:active={showClosedProjects} on:click={() => showClosedProjects = true}>Closed</button>
+          </div>
+        </div>
+        {#each projects.filter(p => showClosedProjects ? (p.status === 'completed' || p.status === 'done') : (p.status !== 'completed' && p.status !== 'done')) as proj}
           {#each [proj.tasks.filter(t => t.status === 'completed' || t.status === 'done').length] as done}
           <div class="ops-project-row" class:active-filter={filterProject === proj.name}
             on:click={() => filterByProject(proj.name)} title="Click to filter tasks">
@@ -357,9 +364,10 @@
             </div>
           </div>
           {/each}
-          {#if false}
-          {/if}
         {/each}
+        {#if projects.filter(p => showClosedProjects ? (p.status === 'completed' || p.status === 'done') : (p.status !== 'completed' && p.status !== 'done')).length === 0}
+          <p class="ops-card-empty">{showClosedProjects ? 'No closed projects' : 'No open projects'}</p>
+        {/if}
       </div>
 
       <!-- REMINDERS -->
