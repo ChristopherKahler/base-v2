@@ -200,9 +200,7 @@
                     {@const gap = prevTs && entry.timestamp ? new Date(entry.timestamp) - new Date(prevTs) : 0}
                     {#if gap > 0}
                       <div class="action-gap">
-                        <span class="gap-line"></span>
-                        <span class="gap-label">{fmtDuration(gap)}</span>
-                        <span class="gap-line"></span>
+                        <span class="gap-label">↕ {fmtDuration(gap)}</span>
                       </div>
                     {/if}
                     <div class="action-row">
@@ -334,15 +332,10 @@
 
   /* ─── Duration Gap Indicators ──────────────────── */
   .action-gap {
-    display: flex; align-items: center; gap: 8px;
-    padding: 2px 0;
-  }
-  .gap-line {
-    flex: 1; height: 1px;
-    background: linear-gradient(90deg, transparent, var(--hairline), transparent);
+    padding: 0 0 0 8px;
   }
   .gap-label {
     font-size: 10px; color: var(--accent-cyan); font-weight: 500;
-    white-space: nowrap;
+    opacity: 0.7;
   }
 </style>

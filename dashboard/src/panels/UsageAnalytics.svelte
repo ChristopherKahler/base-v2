@@ -554,24 +554,26 @@
 </script>
 
 <div class="main-header">
-  <h2>Usage Analytics</h2>
-  {#if activeSubTab === 'usage'}
-  <div style="display: flex; align-items: center; gap: 6px;">
-    {#each [7, 30, 90] as d}
-      <button class="graph-btn" class:active={days === d} on:click={() => setDays(d)}>{d}d</button>
-    {/each}
-    <button class="graph-btn" on:click={() => exportUsageCsv(days)}>↓ CSV</button>
-  </div>
-  {#if summary}
-    <span class="header-meta">
-      {#if selectedModel}<button class="clear-filter" on:click={() => selectedModel = ''}>✕ {selectedModel.replace('claude-', '')}</button> · {/if}
-      Last {days}d · {filteredSessions.length} sessions
-    </span>
-  {/if}
-  {/if}
-  <div class="sub-tabs">
-    <button class="sub-tab" class:active={activeSubTab === 'usage'} on:click={() => activeSubTab = 'usage'}>Usage Overview</button>
-    <button class="sub-tab" class:active={activeSubTab === 'cost'} on:click={() => activeSubTab = 'cost'}>Cost Attribution</button>
+  <div class="header-top">
+    <h2>Usage Analytics</h2>
+    {#if activeSubTab === 'usage'}
+    <div style="display: flex; align-items: center; gap: 6px;">
+      {#each [7, 30, 90] as d}
+        <button class="graph-btn" class:active={days === d} on:click={() => setDays(d)}>{d}d</button>
+      {/each}
+      <button class="graph-btn" on:click={() => exportUsageCsv(days)}>↓ CSV</button>
+    </div>
+    {#if summary}
+      <span class="header-meta">
+        {#if selectedModel}<button class="clear-filter" on:click={() => selectedModel = ''}>✕ {selectedModel.replace('claude-', '')}</button> · {/if}
+        Last {days}d · {filteredSessions.length} sessions
+      </span>
+    {/if}
+    {/if}
+    <div class="sub-tabs">
+      <button class="sub-tab" class:active={activeSubTab === 'usage'} on:click={() => activeSubTab = 'usage'}>Usage Overview</button>
+      <button class="sub-tab" class:active={activeSubTab === 'cost'} on:click={() => activeSubTab = 'cost'}>Cost Attribution</button>
+    </div>
   </div>
 </div>
 
@@ -907,8 +909,10 @@
 
   /* ─── Layout Shell ─────────────────────────────── */
   .main-header {
-    display: flex; align-items: center; justify-content: space-between;
     padding: 14px 28px; border-bottom: 1px solid var(--border);
+  }
+  .header-top {
+    display: flex; align-items: center; gap: 12px;
   }
   .main-header h2 { margin: 0; font-size: 15px; font-weight: 600; color: var(--ink-primary); }
   .header-meta { font-size: 11px; color: var(--ink-tertiary); display: flex; align-items: center; gap: 6px; }

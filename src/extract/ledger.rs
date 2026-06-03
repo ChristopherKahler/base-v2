@@ -95,8 +95,10 @@ pub fn extract_ledger(
             }
         }
 
-        // Link to project via cwd
-        let project_slug = crud::workspace_slug(cwd);
+        // Link to project — read name from paul.toml, fall back to workspace slug
+        let project_name = read_paul_toml_name(cwd)
+            .unwrap_or_else(|| crud::workspace_slug(cwd));
+        let project_slug = crud::slugify(&project_name);
         let project_iri = crud::build_iri(ns, "project", &project_slug);
         body.push_str(&format!(
             "    <{iri}> {p}:belongsTo <{project_iri}> .\n"
@@ -116,6 +118,14 @@ pub fn extract_ledger(
     }
 
     count
+}
+
+/// Read project name from .paul/paul.toml
+fn read_paul_toml_name(cwd: &Path) -> Option<String> {
+    let toml_path = cwd.join(".paul/paul.toml");
+    let content = std::fs::read_to_string(toml_path).ok()?;
+    let table: toml::Table = toml::from_str(&content).ok()?;
+    table.get("name")?.as_str().map(String::from)
 }
 
 /// Simple deterministic hash for IRI generation.
