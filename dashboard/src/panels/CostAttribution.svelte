@@ -1,5 +1,5 @@
 <script>
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { getLedger, getCostSummary } from '../lib/api.js';
 
   let ledger = [];
@@ -131,13 +131,23 @@
     expandedPlan = expandedPlan === key ? null : key;
   }
 
+  let pollInterval;
+
   async function loadData() {
-    loading = true;
+    const wasFirst = !ledger.length;
+    if (wasFirst) loading = true;
     ledger = (await getLedger()) || [];
     loading = false;
   }
 
-  onMount(() => { loadData(); });
+  onMount(() => {
+    loadData();
+    pollInterval = setInterval(loadData, 30000);
+  });
+
+  onDestroy(() => {
+    if (pollInterval) clearInterval(pollInterval);
+  });
 </script>
 
 <div class="cost-panel">
