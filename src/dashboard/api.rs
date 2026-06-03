@@ -1010,29 +1010,42 @@ fn collect_workspace_roots(primary: &std::path::Path) -> Vec<std::path::PathBuf>
     roots
 }
 
+/// Recursively find files matching a relative path pattern under a root directory.
+/// Skips node_modules, .git, target, dist, and hidden dirs (except .paul).
+fn find_files_recursive(dir: &std::path::Path, target: &str, max_depth: u32, results: &mut Vec<std::path::PathBuf>) {
+    if max_depth == 0 { return; }
+    let candidate = dir.join(target);
+    if candidate.exists() {
+        results.push(candidate);
+    }
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            if !entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false) { continue; }
+            let name = entry.file_name();
+            let name_str = name.to_str().unwrap_or("");
+            // Skip heavy/irrelevant dirs
+            if matches!(name_str, "node_modules" | ".git" | "target" | "dist" | ".next" | "__pycache__") { continue; }
+            // Skip hidden dirs except .paul
+            if name_str.starts_with('.') && name_str != ".paul" { continue; }
+            find_files_recursive(&entry.path(), target, max_depth - 1, results);
+        }
+    }
+}
+
 /// Scan for all .paul/ledger.toml files across all registered workspaces.
 fn scan_ledger_files(cwd: &std::path::Path) -> Vec<OpsLedgerEntry> {
     let mut entries = Vec::new();
 
     let workspace_roots = collect_workspace_roots(cwd);
-    let mut dirs_to_check: Vec<std::path::PathBuf> = Vec::new();
 
+    // Recursively find ALL .paul/ledger.toml under every registered workspace
+    let mut ledger_paths: Vec<std::path::PathBuf> = Vec::new();
     for root in &workspace_roots {
-        dirs_to_check.push(root.clone());
-        // Also scan apps/*, tools/*, production/*, clients/* subdirs
-        for subdir in &["apps", "tools", "production", "clients"] {
-            if let Ok(children) = std::fs::read_dir(root.join(subdir)) {
-                for entry in children.flatten() {
-                    if entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false) {
-                        dirs_to_check.push(entry.path());
-                    }
-                }
-            }
-        }
+        find_files_recursive(root, ".paul/ledger.toml", 6, &mut ledger_paths);
     }
 
-    for dir in &dirs_to_check {
-        let ledger_path = dir.join(".paul/ledger.toml");
+    for ledger_path in &ledger_paths {
+        let ledger_path = ledger_path.clone();
         if !ledger_path.exists() { continue; }
 
         let content = match std::fs::read_to_string(&ledger_path) {
@@ -1044,12 +1057,14 @@ fn scan_ledger_files(cwd: &std::path::Path) -> Vec<OpsLedgerEntry> {
             Err(_) => continue,
         };
 
-        // Read project name from paul.toml
-        let project_name = std::fs::read_to_string(dir.join(".paul/paul.toml"))
+        // Read project name from paul.toml (sibling of ledger.toml)
+        let paul_dir = ledger_path.parent().unwrap_or(std::path::Path::new("."));
+        let project_dir = paul_dir.parent().unwrap_or(std::path::Path::new("."));
+        let project_name = std::fs::read_to_string(paul_dir.join("paul.toml"))
             .ok()
             .and_then(|c| toml::from_str::<PaulToml>(&c).ok())
             .and_then(|p| p.name)
-            .unwrap_or_else(|| dir.file_name().and_then(|n| n.to_str()).unwrap_or("unknown").to_string());
+            .unwrap_or_else(|| project_dir.file_name().and_then(|n| n.to_str()).unwrap_or("unknown").to_string());
 
         if let Some(raw_entries) = ledger.entry {
             for e in raw_entries {
