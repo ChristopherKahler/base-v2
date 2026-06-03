@@ -965,12 +965,14 @@ pub struct OpsLedgerEntry {
     pub session_cost: Option<f64>,
 }
 
-/// TOML structs for direct ledger.toml parsing
+/// TOML structs for direct ledger.toml parsing — supports both formats
 #[derive(serde::Deserialize)]
 struct LedgerToml {
     entry: Option<Vec<LedgerTomlEntry>>,
+    session: Option<Vec<LedgerTomlSession>>,
 }
 
+/// Format 1: [[entry]] — base-v2 style (action/phase/plan/at/note)
 #[derive(serde::Deserialize)]
 struct LedgerTomlEntry {
     action: String,
@@ -978,6 +980,18 @@ struct LedgerTomlEntry {
     plan: Option<String>,
     at: String,
     note: Option<String>,
+}
+
+/// Format 2: [[session]] — seed/toolbox style (date/phase/plan/action/duration_min/outcome)
+#[derive(serde::Deserialize)]
+struct LedgerTomlSession {
+    action: Option<String>,
+    phase: Option<String>,
+    plan: Option<String>,
+    date: Option<String>,
+    duration_min: Option<u32>,
+    outcome: Option<String>,
+    tasks: Option<u32>,
 }
 
 #[derive(serde::Deserialize)]
@@ -1066,6 +1080,7 @@ fn scan_ledger_files(cwd: &std::path::Path) -> Vec<OpsLedgerEntry> {
             .and_then(|p| p.name)
             .unwrap_or_else(|| project_dir.file_name().and_then(|n| n.to_str()).unwrap_or("unknown").to_string());
 
+        // Format 1: [[entry]]
         if let Some(raw_entries) = ledger.entry {
             for e in raw_entries {
                 entries.push(OpsLedgerEntry {
@@ -1078,6 +1093,23 @@ fn scan_ledger_files(cwd: &std::path::Path) -> Vec<OpsLedgerEntry> {
                     project: project_name.clone(),
                     session_tokens: None,
                     session_cost: None,
+                });
+            }
+        }
+
+        // Format 2: [[session]]
+        if let Some(sessions) = ledger.session {
+            for s in sessions {
+                entries.push(OpsLedgerEntry {
+                    iri: String::new(),
+                    action: s.action.unwrap_or_else(|| "session".into()),
+                    phase: s.phase.unwrap_or_default(),
+                    plan: s.plan.unwrap_or_default(),
+                    timestamp: s.date.unwrap_or_default(),
+                    note: s.outcome.unwrap_or_default(),
+                    project: project_name.clone(),
+                    session_tokens: None,
+                    session_cost: s.duration_min.map(|d| d as f64),
                 });
             }
         }
