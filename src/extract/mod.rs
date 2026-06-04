@@ -1,6 +1,7 @@
 pub mod frontmatter;
 pub mod ledger;
 pub mod paul_json;
+pub mod paul_md;
 pub mod paul_toml;
 
 use std::path::Path;
@@ -109,6 +110,8 @@ pub fn sync(cwd: &Path, config: &BaseConfig, incremental: bool) -> Result<SyncRe
             } else {
                 None
             }
+        } else if rel_path.ends_with(".md") && paul_md::is_paul_artifact(&rel_path) {
+            paul_md::extract(&content, &rel_path, ns)
         } else if rel_path.ends_with(".md") {
             frontmatter::extract_with_project(&content, &rel_path, ns, project_hint.as_deref())
         } else {
@@ -130,12 +133,28 @@ pub fn sync(cwd: &Path, config: &BaseConfig, incremental: bool) -> Result<SyncRe
         let now = crud::now_iso();
         let p = &ns.prefix;
         let mut insert_body = String::new();
+        let mut entity_iris: Vec<String> = Vec::new();
         for (pred, val) in &triples {
-            insert_body.push_str(&format!("    <{file_iri}> {pred} {val} .\n"));
+            // ENTITY@@{iri}@@{pred} triples get their own subject IRI
+            if let Some(rest) = pred.strip_prefix("ENTITY@@") {
+                if let Some((iri, actual_pred)) = rest.split_once("@@") {
+                    insert_body.push_str(&format!("    <{iri}> {actual_pred} {val} .\n"));
+                    if !entity_iris.contains(&iri.to_string()) {
+                        entity_iris.push(iri.to_string());
+                    }
+                }
+            } else {
+                insert_body.push_str(&format!("    <{file_iri}> {pred} {val} .\n"));
+            }
         }
         insert_body.push_str(&format!(
             "    <{file_iri}> {p}:lastExtracted \"{now}\"^^xsd:dateTime .\n"
         ));
+        // Clean up old entity triples for entities owned by this document
+        for entity_iri in &entity_iris {
+            let del_entity = format!("{prefixes}\nDELETE WHERE {{ GRAPH <{graph_iri}> {{ <{entity_iri}> ?p ?o }} }}");
+            let _ = store.update(&del_entity);
+        }
 
         let insert_sparql = format!(
             "{prefixes}\nINSERT DATA {{\n  GRAPH <{graph_iri}> {{\n{insert_body}  }}\n}}"
