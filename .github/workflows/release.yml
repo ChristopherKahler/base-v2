@@ -21,10 +21,6 @@ jobs:
             os: windows-latest
             asset: base-windows-x86_64.zip
             binary: base.exe
-          - target: x86_64-apple-darwin
-            os: macos-13
-            asset: base-darwin-x86_64.tar.gz
-            binary: base
           - target: aarch64-apple-darwin
             os: macos-14
             asset: base-darwin-aarch64.tar.gz
@@ -76,7 +72,6 @@ jobs:
           files: |
             base-linux-x86_64.tar.gz/base-linux-x86_64.tar.gz
             base-windows-x86_64.zip/base-windows-x86_64.zip
-            base-darwin-x86_64.tar.gz/base-darwin-x86_64.tar.gz
             base-darwin-aarch64.tar.gz/base-darwin-aarch64.tar.gz
           body: |
             ## Install
