@@ -197,13 +197,46 @@ fn detect_skill_component(home: &Path, name: &str, now: &str) -> Option<Componen
         return None;
     }
 
-    let version = read_package_version(&dir).unwrap_or_else(|| "unknown".to_string());
+    // Try package.json first, then skill entry point frontmatter
+    let version = read_package_version(&dir)
+        .or_else(|| read_skill_version(&dir, name))
+        .unwrap_or_else(|| "unknown".to_string());
 
     Some(ComponentEntry {
         version,
         path: display_path,
         installed_at: now.to_string(),
     })
+}
+
+/// Read version from a skill's entry point YAML frontmatter (e.g. seed.md, skillsmith.md).
+fn read_skill_version(dir: &Path, name: &str) -> Option<String> {
+    // Try {name}.md in the dir, or {name}/{name}.md for nested skills like skillsmith
+    let candidates = [
+        dir.join(format!("{name}.md")),
+        dir.join(name).join(format!("{name}.md")),
+    ];
+
+    for path in &candidates {
+        if let Ok(content) = std::fs::read_to_string(path) {
+            // Parse YAML frontmatter between --- delimiters
+            if content.starts_with("---") {
+                if let Some(end) = content[3..].find("---") {
+                    let frontmatter = &content[3..3 + end];
+                    for line in frontmatter.lines() {
+                        let line = line.trim();
+                        if line.starts_with("version:") {
+                            let v = line["version:".len()..].trim().trim_matches('"').trim_matches('\'');
+                            if !v.is_empty() {
+                                return Some(v.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
 }
 
 /// Read version from package.json in a directory.

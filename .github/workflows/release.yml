@@ -42,16 +42,21 @@ jobs:
       - name: Package (Unix)
         if: runner.os != 'Windows'
         run: |
-          cd target/${{ matrix.target }}/release
-          strip ${{ matrix.binary }} || true
-          tar -czf ../../../${{ matrix.asset }} ${{ matrix.binary }}
+          mkdir -p staging/scripts/ast
+          cp target/${{ matrix.target }}/release/${{ matrix.binary }} staging/
+          strip staging/${{ matrix.binary }} || true
+          cp scripts/ast/*.py staging/scripts/ast/
+          cd staging
+          tar -czf ../${{ matrix.asset }} ${{ matrix.binary }} scripts/
 
       - name: Package (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          cd target/${{ matrix.target }}/release
-          Compress-Archive -Path ${{ matrix.binary }} -DestinationPath ../../../${{ matrix.asset }}
+          New-Item -ItemType Directory -Force -Path staging/scripts/ast | Out-Null
+          Copy-Item target/${{ matrix.target }}/release/${{ matrix.binary }} staging/
+          Copy-Item scripts/ast/*.py staging/scripts/ast/
+          Compress-Archive -Path staging/* -DestinationPath ${{ matrix.asset }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
