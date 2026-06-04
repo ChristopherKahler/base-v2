@@ -121,6 +121,21 @@ pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Res
                 }
             }
         }
+
+        // ─── PAUL context injection (file change history) ───────
+        // When editing a file that has FileChange/Decision history in the
+        // graph, surface the decisions and changes that shaped it.
+        if let Some(store) = load_merged_graph(cwd) {
+            for fp in &file_paths {
+                if let Some(fp_str) = fp.to_str() {
+                    let paul_ctx = query_paul_context(&store, config, fp_str);
+                    if !paul_ctx.is_empty() {
+                        output.push_str(&paul_ctx);
+                        output.push('\n');
+                    }
+                }
+            }
+        }
     }
 
     if !output.is_empty() {
@@ -433,6 +448,100 @@ fn load_merged_graph(cwd: &Path) -> Option<oxigraph::store::Store> {
 
     let path_refs: Vec<&Path> = paths.iter().map(|p| p.as_path()).collect();
     crate::store::load_graphs(&path_refs).ok()
+}
+
+/// Query PAUL FileChange and Decision entities linked to a file path.
+/// Returns formatted context string for hook injection.
+fn query_paul_context(store: &oxigraph::store::Store, config: &BaseConfig, file_path: &str) -> String {
+    let ns = &config.namespace;
+    let p = &ns.prefix;
+    let pfx = crud::prefixes(ns);
+
+    // Normalize: strip leading ./ and match against filePath values
+    let clean = file_path.trim_start_matches("./");
+
+    // Query file changes that reference this path
+    let fc_sparql = format!(
+        "{pfx}\n\
+         SELECT ?plan ?change ?purpose WHERE {{\n\
+           GRAPH ?g {{\n\
+             ?fc a {p}:FileChange ;\n\
+                 {p}:filePath ?path ;\n\
+                 {p}:fromPlan ?plan ;\n\
+                 {p}:changeType ?change .\n\
+             OPTIONAL {{ ?fc {p}:purpose ?purpose }}\n\
+             FILTER(CONTAINS(STR(?path), \"{clean}\"))\n\
+           }}\n\
+         }} LIMIT 5"
+    );
+
+    let mut changes = Vec::new();
+    if let Ok(oxigraph::sparql::QueryResults::Solutions(solutions)) = store.query(&fc_sparql) {
+        for row in solutions.flatten() {
+            let plan = row.get("plan").map(|t| term_str(t.into())).unwrap_or_default();
+            let change = row.get("change").map(|t| term_str(t.into())).unwrap_or_default();
+            let purpose = row.get("purpose").map(|t| term_str(t.into())).unwrap_or_default();
+            changes.push((plan, change, purpose));
+        }
+    }
+
+    if changes.is_empty() {
+        return String::new();
+    }
+
+    // For each plan that touched this file, get its decisions
+    let mut plans: Vec<String> = changes.iter().map(|(p, _, _)| p.clone()).collect();
+    plans.sort();
+    plans.dedup();
+
+    let mut decisions = Vec::new();
+    for plan_id in &plans {
+        let dec_sparql = format!(
+            "{pfx}\n\
+             SELECT ?desc ?rationale WHERE {{\n\
+               GRAPH ?g {{\n\
+                 ?d a {p}:Decision ;\n\
+                    {p}:fromPlan \"{plan_id}\" ;\n\
+                    {p}:description ?desc ;\n\
+                    {p}:rationale ?rationale .\n\
+               }}\n\
+             }} LIMIT 5"
+        );
+        if let Ok(oxigraph::sparql::QueryResults::Solutions(solutions)) = store.query(&dec_sparql) {
+            for row in solutions.flatten() {
+                let desc = row.get("desc").map(|t| term_str(t.into())).unwrap_or_default();
+                let rationale = row.get("rationale").map(|t| term_str(t.into())).unwrap_or_default();
+                decisions.push((plan_id.clone(), desc, rationale));
+            }
+        }
+    }
+
+    // Format output
+    let mut out = String::from("<paul-context>\n");
+    out.push_str(&format!("File history for: {clean}\n"));
+    for (plan, change, purpose) in &changes {
+        out.push_str(&format!("  Plan {plan}: {change}"));
+        if !purpose.is_empty() {
+            out.push_str(&format!(" — {purpose}"));
+        }
+        out.push('\n');
+    }
+    if !decisions.is_empty() {
+        out.push_str("Decisions:\n");
+        for (plan, desc, rationale) in &decisions {
+            out.push_str(&format!("  [{plan}] {desc} — {rationale}\n"));
+        }
+    }
+    out.push_str("</paul-context>");
+    out
+}
+
+fn term_str(term: oxigraph::model::TermRef<'_>) -> String {
+    match term {
+        TermRef::Literal(l) => l.value().to_string(),
+        TermRef::NamedNode(n) => n.as_str().to_string(),
+        _ => term.to_string(),
+    }
 }
 
 const MARKDOWN_GUIDANCE: &str = "\

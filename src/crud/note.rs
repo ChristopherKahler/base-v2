@@ -88,11 +88,45 @@ pub fn recall(
         (Some(kw), None) => {
             let kw_lower = kw.to_lowercase();
             format!(
-                "SELECT ?text ?type ?created WHERE {{\n\
-                   GRAPH ?g {{\n\
-                     ?n a {p}:Note ; {p}:noteText ?text ; {p}:noteType ?type ; {p}:status \"active\" .\n\
-                     OPTIONAL {{ ?n {p}:createdAt ?created }}\n\
-                     FILTER(CONTAINS(LCASE(STR(?text)), \"{kw_lower}\"))\n\
+                "SELECT ?text ?type ?created ?extra WHERE {{\n\
+                   {{\n\
+                     GRAPH ?g {{\n\
+                       ?n a {p}:Note ; {p}:noteText ?text ; {p}:noteType ?type ; {p}:status \"active\" .\n\
+                       OPTIONAL {{ ?n {p}:createdAt ?created }}\n\
+                       FILTER(CONTAINS(LCASE(STR(?text)), \"{kw_lower}\"))\n\
+                     }}\n\
+                   }} UNION {{\n\
+                     GRAPH ?g {{\n\
+                       ?n a {p}:Decision ; {p}:description ?text .\n\
+                       BIND(\"decision\" AS ?type)\n\
+                       OPTIONAL {{ ?n {p}:rationale ?extra }}\n\
+                       OPTIONAL {{ ?n {p}:fromPlan ?created }}\n\
+                       FILTER(CONTAINS(LCASE(STR(?text)), \"{kw_lower}\"))\n\
+                     }}\n\
+                   }} UNION {{\n\
+                     GRAPH ?g {{\n\
+                       ?n a {p}:Decision ; {p}:rationale ?text .\n\
+                       BIND(\"decision\" AS ?type)\n\
+                       OPTIONAL {{ ?n {p}:description ?extra }}\n\
+                       OPTIONAL {{ ?n {p}:fromPlan ?created }}\n\
+                       FILTER(CONTAINS(LCASE(STR(?text)), \"{kw_lower}\"))\n\
+                     }}\n\
+                   }} UNION {{\n\
+                     GRAPH ?g {{\n\
+                       ?n a {p}:FileChange ; {p}:filePath ?text .\n\
+                       BIND(\"file-change\" AS ?type)\n\
+                       OPTIONAL {{ ?n {p}:purpose ?extra }}\n\
+                       OPTIONAL {{ ?n {p}:fromPlan ?created }}\n\
+                       FILTER(CONTAINS(LCASE(STR(?text)), \"{kw_lower}\"))\n\
+                     }}\n\
+                   }} UNION {{\n\
+                     GRAPH ?g {{\n\
+                       ?n a {p}:AcceptanceCriteriaResult ; {p}:criterion ?text .\n\
+                       BIND(\"ac-result\" AS ?type)\n\
+                       OPTIONAL {{ ?n {p}:status ?extra }}\n\
+                       OPTIONAL {{ ?n {p}:fromPlan ?created }}\n\
+                       FILTER(CONTAINS(LCASE(STR(?text)), \"{kw_lower}\"))\n\
+                     }}\n\
                    }}\n\
                  }}"
             )
@@ -127,6 +161,9 @@ pub fn recall(
                     row.get("text")
                         .map(|t| crud::term_display(t.into()))
                         .unwrap_or_default(),
+                    row.get("extra")
+                        .map(|t| crud::term_display(t.into()))
+                        .unwrap_or_else(|| "-".into()),
                     row.get("created")
                         .map(|t| crud::term_display(t.into()))
                         .unwrap_or_else(|| "-".into()),
@@ -135,14 +172,14 @@ pub fn recall(
             .collect();
 
         if rows.is_empty() {
-            println!("No notes found.");
+            println!("No results found.");
             return Ok(());
         }
 
-        println!("| type | text | created |");
-        println!("|------|------|---------|");
+        println!("| type | text | context | plan/date |");
+        println!("|------|------|---------|-----------|");
         for row in &rows {
-            println!("| {} | {} | {} |", row[0], row[1], row[2]);
+            println!("| {} | {} | {} | {} |", row[0], row[1], row[2], row[3]);
         }
     }
     Ok(())
