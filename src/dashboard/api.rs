@@ -127,7 +127,9 @@ pub async fn nodes(State(state): State<Arc<AppState>>) -> Json<Vec<GraphNode>> {
          SELECT ?s ?type ?name ?status ?path ?docType WHERE {{\n\
            GRAPH ?g {{\n\
              ?s rdf:type ?type .\n\
-             OPTIONAL {{ ?s {p}:name ?name }}\n\
+             OPTIONAL {{ ?s {p}:name ?rawName }}\n\
+             OPTIONAL {{ ?s {p}:description ?desc }}\n\
+             BIND(COALESCE(?rawName, ?desc) AS ?name)\n\
              OPTIONAL {{ ?s {p}:status ?status }}\n\
              OPTIONAL {{ ?s {p}:path ?path }}\n\
              OPTIONAL {{ ?s {p}:documentType ?docType }}\n\
@@ -212,12 +214,15 @@ pub async fn search(
     let q_lower = q.to_lowercase();
     let store = state.store.lock().unwrap();
 
-    // Search by name OR by note text (OperatorNote ops:text)
+    // Search by name, description, or note text
     let sparql = format!(
         "{pfx}\n\
          SELECT ?s ?type ?name ?status WHERE {{\n\
            {{ GRAPH ?g {{\n\
              ?s rdf:type ?type . ?s {p}:name ?name .\n\
+             FILTER(CONTAINS(LCASE(?name), \"{q_lower}\"))\n\
+           }} }} UNION {{ GRAPH ?g {{\n\
+             ?s rdf:type ?type . ?s {p}:description ?name .\n\
              FILTER(CONTAINS(LCASE(?name), \"{q_lower}\"))\n\
            }} }} UNION {{ GRAPH ?g {{\n\
              ?s rdf:type {p}:OperatorNote . ?s {p}:text ?name .\n\
@@ -1345,6 +1350,7 @@ fn is_edge_predicate(pred: &str, prefix: &str) -> bool {
         "relatedTo", "references", "hasRule", "hasDecision",
         "hasMilestone", "hasTask", "calls", "importsFrom",
         "contains", "hasMethod", "belongsTo", "operatorNote",
+        "hasFileChange", "hasACResult", "hasAC", "dependsOn", "affects",
     ];
     edge_preds.iter().any(|ep| pred.contains(&format!("{prefix}:{ep}")) || pred.ends_with(&format!("#{ep}")))
 }
