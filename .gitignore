@@ -3,7 +3,7 @@ __pycache__/
 .base-ast-cache/
 huly-DESIGN.md
 dashboard/node_modules/
-dashboard/dist/
+# dashboard/dist/ is committed — embedded in binary via include_dir, needed for CI
 
 # PAUL project management (local state, not source)
 .paul/
