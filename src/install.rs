@@ -337,40 +337,60 @@ fn wire_hooks(settings_path: &Path) -> Result<()> {
     let mut settings: serde_json::Value = serde_json::from_str(&content)
         .context("Failed to parse settings.json")?;
 
-    let base_hook_command = "base hook user-prompt-submit";
+    // All hooks BASE needs wired
+    let hook_entries = [
+        ("SessionStart", "base hook session-start"),
+        ("UserPromptSubmit", "base hook user-prompt-submit"),
+        ("PreToolUse", "base hook pre-tool-use"),
+        ("PostToolUse", "base hook post-tool-use"),
+    ];
 
-    // Check if already wired
-    if content.contains(base_hook_command) {
+    // Check if already fully wired (all 4 present)
+    let all_present = hook_entries.iter().all(|(_, cmd)| content.contains(cmd));
+    if all_present {
         println!("✓ (already wired)");
         return Ok(());
     }
 
-    // Find or create UserPromptSubmit hooks array
     let hooks = settings
         .as_object_mut()
         .context("settings.json is not an object")?
         .entry("hooks")
         .or_insert_with(|| serde_json::json!({}));
 
-    let ups_hooks = hooks
+    let hooks_obj = hooks
         .as_object_mut()
-        .context("hooks is not an object")?
-        .entry("UserPromptSubmit")
-        .or_insert_with(|| serde_json::json!([]));
+        .context("hooks is not an object")?;
 
-    let ups_array = ups_hooks
-        .as_array_mut()
-        .context("UserPromptSubmit is not an array")?;
+    let mut added = Vec::new();
 
-    // Add base hook as a new entry
-    ups_array.push(serde_json::json!({
-        "hooks": [
-            {
-                "type": "command",
-                "command": base_hook_command
-            }
-        ]
-    }));
+    for (event, command) in &hook_entries {
+        // Skip if this specific hook is already present
+        if content.contains(command) {
+            continue;
+        }
+
+        let event_hooks = hooks_obj
+            .entry(*event)
+            .or_insert_with(|| serde_json::json!([]));
+
+        if !event_hooks.is_array() {
+            *event_hooks = serde_json::json!([]);
+        }
+
+        let arr = event_hooks.as_array_mut().unwrap();
+
+        arr.push(serde_json::json!({
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": command
+                }
+            ]
+        }));
+
+        added.push(*event);
+    }
 
     // Write back atomically
     let tmp_path = settings_path.with_extension("json.tmp");
@@ -378,7 +398,11 @@ fn wire_hooks(settings_path: &Path) -> Result<()> {
     std::fs::write(&tmp_path, &formatted)?;
     std::fs::rename(&tmp_path, settings_path)?;
 
-    println!("✓ (added base hook user-prompt-submit)");
+    if added.is_empty() {
+        println!("✓ (already wired)");
+    } else {
+        println!("✓ (added base hook {})", added.join(", "));
+    }
     Ok(())
 }
 
