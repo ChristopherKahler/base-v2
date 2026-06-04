@@ -48,7 +48,7 @@ pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Res
             let matched = match_by_file(&domains, &file_path_strings, &session);
             if !matched.is_empty() {
                 crate::hook::user_prompt_submit::ensure_domain_sync_pub(config, cwd);
-                let graph_store = load_workspace_graph(cwd);
+                let graph_store = load_merged_graph(cwd);
                 let mut session_dirty = false;
 
                 for domain_def in &matched {
@@ -409,13 +409,30 @@ fn format_toml_rules(domain_def: &domain::DomainDef) -> String {
     out
 }
 
-fn load_workspace_graph(cwd: &Path) -> Option<oxigraph::store::Store> {
-    let base_dir = crate::config::find_workspace_base(cwd)?;
-    let trig_path = base_dir.join("graph.trig");
-    if !trig_path.exists() {
+/// Load a merged graph from global (~/.base-gbl/.base/graph.trig) and workspace tiers.
+fn load_merged_graph(cwd: &Path) -> Option<oxigraph::store::Store> {
+    let mut paths: Vec<std::path::PathBuf> = Vec::new();
+
+    if let Some(home) = dirs::home_dir() {
+        let global_trig = home.join(".base-gbl").join(".base").join("graph.trig");
+        if global_trig.exists() {
+            paths.push(global_trig);
+        }
+    }
+
+    if let Some(base_dir) = crate::config::find_workspace_base(cwd) {
+        let ws_trig = base_dir.join("graph.trig");
+        if ws_trig.exists() {
+            paths.push(ws_trig);
+        }
+    }
+
+    if paths.is_empty() {
         return None;
     }
-    crate::store::load_graph(&trig_path).ok()
+
+    let path_refs: Vec<&Path> = paths.iter().map(|p| p.as_path()).collect();
+    crate::store::load_graphs(&path_refs).ok()
 }
 
 const MARKDOWN_GUIDANCE: &str = "\

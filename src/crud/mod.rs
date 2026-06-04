@@ -137,7 +137,7 @@ pub fn load_and_mutate(cwd: &Path, ns: &NamespaceConfig, sparql: &str) -> Result
 /// Load workspace graph and run a SPARQL SELECT query.
 pub fn load_and_query(cwd: &Path, ns: &NamespaceConfig, sparql: &str) -> Result<QueryResults> {
     let base_dir = crate::config::find_workspace_base(cwd)
-        .context("no .base/ directory found")?;
+        .context("no .base/ directory found. Use --global for global rules, or run `base scaffold` to create a workspace.")?;
     let trig_path = base_dir.join("graph.trig");
     let store = crate::store::load_graph(&trig_path)?;
     let full_sparql = format!("{}\n{}", prefixes(ns), sparql);
@@ -160,7 +160,7 @@ fn capitalize_first(s: &str) -> String {
 /// Loads the graph once and runs all checks against it.
 pub fn resolve_slug(cwd: &Path, ns: &NamespaceConfig, entity_type: &str, input: &str) -> Result<String> {
     let base_dir = crate::config::find_workspace_base(cwd)
-        .context("no .base/ directory found")?;
+        .context("no .base/ directory found. Use --global for global rules, or run `base scaffold` to create a workspace.")?;
     let trig_path = base_dir.join("graph.trig");
     let store = crate::store::load_graph(&trig_path)?;
     let pfx = prefixes(ns);

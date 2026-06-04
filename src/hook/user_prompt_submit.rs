@@ -20,7 +20,11 @@ pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Res
         return Ok(super::HookEventData::default());
     }
 
-    let base_dir = crate::config::find_workspace_base(cwd);
+    // Resolve base dir: workspace first, fall back to global tier
+    let base_dir = crate::config::find_workspace_base(cwd)
+        .or_else(|| {
+            dirs::home_dir().map(|h| h.join(".base-gbl").join(".base")).filter(|p| p.is_dir())
+        });
     let mut session = base_dir
         .as_deref()
         .map(SessionState::load)
@@ -70,8 +74,8 @@ pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Res
     // Ensure domain sync has run (auto-sync if domains.toml is newer than graph)
     ensure_domain_sync(config, cwd);
 
-    // Try to load the graph for graph-backed injection
-    let graph_store = load_workspace_graph(cwd);
+    // Try to load the graph for graph-backed injection (merged: global + workspace)
+    let graph_store = load_merged_graph(cwd);
 
     // Emit context bracket tag
     let mut output = format!(
@@ -445,7 +449,27 @@ pub fn ensure_domain_sync_pub(config: &BaseConfig, cwd: &Path) {
 
 /// Ensure domains.toml has been synced to the graph this session.
 /// Uses a timestamp marker file to avoid re-syncing on every prompt.
+/// Syncs both global (~/.base-gbl/) and workspace tiers.
 fn ensure_domain_sync(config: &BaseConfig, cwd: &Path) {
+    // Global tier: sync ~/.base-gbl/domains.toml → ~/.base-gbl/.base/graph.trig
+    if let Some(home) = dirs::home_dir() {
+        let global_dir = home.join(".base-gbl");
+        let global_base = global_dir.join(".base");
+        if global_base.is_dir() {
+            let marker = global_base.join(".domain-sync-ts");
+            let domains_toml = global_dir.join("domains.toml");
+            if domains_toml.exists() {
+                let needs_sync = needs_sync_check(&domains_toml, &marker);
+                if needs_sync {
+                    if domain::sync::sync_domains_to_graph(config, &global_dir, None).is_ok() {
+                        let _ = std::fs::write(&marker, "");
+                    }
+                }
+            }
+        }
+    }
+
+    // Workspace tier: sync {workspace}/.base/domains.toml → {workspace}/.base/graph.trig
     let base_dir = match crate::config::find_workspace_base(cwd) {
         Some(d) => d,
         None => return,
@@ -454,43 +478,63 @@ fn ensure_domain_sync(config: &BaseConfig, cwd: &Path) {
     let marker = base_dir.join(".domain-sync-ts");
     let domains_toml = base_dir.join("domains.toml");
 
-    // Check if domains.toml exists
     if !domains_toml.exists() {
         return;
     }
 
-    // Check if sync is needed: marker missing or domains.toml newer than marker
-    let needs_sync = if marker.exists() {
+    let needs_sync = needs_sync_check(&domains_toml, &marker);
+    if needs_sync {
+        if domain::sync::sync_domains_to_graph(config, cwd, None).is_ok() {
+            let _ = std::fs::write(&marker, "");
+        }
+    }
+}
+
+/// Check if a domains.toml is newer than its sync marker.
+fn needs_sync_check(domains_toml: &Path, marker: &Path) -> bool {
+    if marker.exists() {
         match (
-            std::fs::metadata(&domains_toml).and_then(|m| m.modified()),
-            std::fs::metadata(&marker).and_then(|m| m.modified()),
+            std::fs::metadata(domains_toml).and_then(|m| m.modified()),
+            std::fs::metadata(marker).and_then(|m| m.modified()),
         ) {
             (Ok(toml_time), Ok(marker_time)) => toml_time > marker_time,
             _ => true,
         }
     } else {
         true
-    };
-
-    if needs_sync {
-        // Run sync silently — errors are non-fatal (fail-open)
-        if domain::sync::sync_domains_to_graph(config, cwd, None).is_ok() {
-            // Touch marker file
-            let _ = std::fs::write(&marker, "");
-        }
     }
 }
 
 // ─── Graph loading ──────────────────────────────────────────
 
-/// Load the workspace graph.trig. Returns None on any error (fail-open).
-fn load_workspace_graph(cwd: &Path) -> Option<oxigraph::store::Store> {
-    let base_dir = crate::config::find_workspace_base(cwd)?;
-    let trig_path = base_dir.join("graph.trig");
-    if !trig_path.exists() {
+/// Load a merged graph from global (~/.base-gbl/.base/graph.trig) and workspace tiers.
+/// Both are loaded into one Oxigraph store so SPARQL queries span all tiers.
+/// Returns None only if neither graph exists (fail-open).
+fn load_merged_graph(cwd: &Path) -> Option<oxigraph::store::Store> {
+    let mut paths: Vec<std::path::PathBuf> = Vec::new();
+
+    // Global tier: ~/.base-gbl/.base/graph.trig
+    if let Some(home) = dirs::home_dir() {
+        let global_trig = home.join(".base-gbl").join(".base").join("graph.trig");
+        if global_trig.exists() {
+            paths.push(global_trig);
+        }
+    }
+
+    // Workspace tier: {workspace}/.base/graph.trig
+    if let Some(base_dir) = crate::config::find_workspace_base(cwd) {
+        let ws_trig = base_dir.join("graph.trig");
+        if ws_trig.exists() {
+            paths.push(ws_trig);
+        }
+    }
+
+    if paths.is_empty() {
         return None;
     }
-    crate::store::load_graph(&trig_path).ok()
+
+    let path_refs: Vec<&Path> = paths.iter().map(|p| p.as_path()).collect();
+    crate::store::load_graphs(&path_refs).ok()
 }
 
 // ─── Prompt extraction ──────────────────────────────────────
@@ -511,22 +555,12 @@ fn extract_prompt(event: &serde_json::Value) -> String {
         .to_string()
 }
 
-/// Gather recently-active file paths from the graph (for path-based domain matching).
+/// Gather recently-active file paths from the merged graph (for path-based domain matching).
 /// Returns empty vec if no graph available — graceful degradation.
 fn gather_active_paths(config: &BaseConfig, cwd: &Path) -> Vec<String> {
-    let base_dir = match crate::config::find_workspace_base(cwd) {
-        Some(d) => d,
+    let graph = match load_merged_graph(cwd) {
+        Some(g) => g,
         None => return Vec::new(),
-    };
-
-    let trig_path = base_dir.join("graph.trig");
-    if !trig_path.exists() {
-        return Vec::new();
-    }
-
-    let graph = match crate::store::load_graph(&trig_path) {
-        Ok(g) => g,
-        Err(_) => return Vec::new(),
     };
 
     let sparql = format!(

@@ -123,6 +123,9 @@ pub enum Commands {
     },
     /// Manage rules in the graph (add, list, remove)
     Rule {
+        /// Target the global tier (~/.base-gbl/) instead of workspace
+        #[arg(long, short)]
+        global: bool,
         #[command(subcommand)]
         action: RuleAction,
     },
@@ -768,20 +771,35 @@ pub fn run() {
         },
 
         // ─── Rule ─────────────────────────────────────────
-        Some(Commands::Rule { action }) => match action {
-            RuleAction::Add { domain: name, text } => {
-                match crud::rule::add(&cwd, &config.namespace, &name, &text) {
-                    Ok(index) => println!("Rule {index} added to domain '{name}'"),
-                    Err(e) => eprintln!("Failed: {e}"),
+        Some(Commands::Rule { global, action }) => {
+            let rule_cwd = if global {
+                match dirs::home_dir() {
+                    Some(h) => h.join(".base-gbl"),
+                    None => {
+                        eprintln!("Failed: cannot determine home directory");
+                        return;
+                    }
                 }
-            }
-            RuleAction::List { domain: name } => {
-                let _ = crud::rule::list(&cwd, &config.namespace, &name);
-            }
-            RuleAction::Remove { domain: name, index } => {
-                match crud::rule::remove(&cwd, &config.namespace, &name, index) {
-                    Ok(()) => println!("Rule {index} removed from domain '{name}'"),
-                    Err(e) => eprintln!("Failed: {e}"),
+            } else {
+                cwd.clone()
+            };
+            match action {
+                RuleAction::Add { domain: name, text } => {
+                    match crud::rule::add(&rule_cwd, &config.namespace, &name, &text) {
+                        Ok(index) => println!("Rule {index} added to domain '{name}'"),
+                        Err(e) => eprintln!("Failed: {e}"),
+                    }
+                }
+                RuleAction::List { domain: name } => {
+                    if let Err(e) = crud::rule::list(&rule_cwd, &config.namespace, &name) {
+                        eprintln!("Failed: {e}");
+                    }
+                }
+                RuleAction::Remove { domain: name, index } => {
+                    match crud::rule::remove(&rule_cwd, &config.namespace, &name, index) {
+                        Ok(()) => println!("Rule {index} removed from domain '{name}'"),
+                        Err(e) => eprintln!("Failed: {e}"),
+                    }
                 }
             }
         },

@@ -9,8 +9,13 @@ use crate::store;
 
 pub fn handle(config: &BaseConfig, cwd: &Path) -> Result<()> {
     // Clear session dedup state for fresh session
-    if let Some(base_dir) = crate::config::find_workspace_base(cwd) {
-        crate::domain::session::SessionState::clear(&base_dir);
+    // Try workspace first, fall back to global tier for no-workspace users
+    let session_base_dir = crate::config::find_workspace_base(cwd)
+        .or_else(|| {
+            dirs::home_dir().map(|h| h.join(".base-gbl").join(".base")).filter(|p| p.is_dir())
+        });
+    if let Some(ref base_dir) = session_base_dir {
+        crate::domain::session::SessionState::clear(base_dir);
     }
 
     // Auto-sync domains to graph
@@ -143,9 +148,9 @@ fn ingest_paul_projects(config: &BaseConfig, cwd: &Path) {
 fn discover_trig_files(cwd: &Path) -> Vec<PathBuf> {
     let mut files = Vec::new();
 
-    // Global tier: ~/.base-gbl/graph.trig
+    // Global tier: ~/.base-gbl/.base/graph.trig
     if let Some(home) = dirs::home_dir() {
-        let global = home.join(".base-gbl").join("graph.trig");
+        let global = home.join(".base-gbl").join(".base").join("graph.trig");
         if global.exists() {
             files.push(global);
         }
@@ -249,10 +254,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn discover_finds_nothing_in_empty_dir() {
+    fn discover_finds_no_workspace_trig_in_empty_dir() {
         let tmp = tempfile::tempdir().unwrap();
         let files = discover_trig_files(tmp.path());
-        assert!(files.is_empty());
+        // May find global graph if ~/.base-gbl/.base/graph.trig exists on host
+        // but should NOT find a workspace graph
+        assert!(!files.iter().any(|f| {
+            let s = f.to_string_lossy();
+            !s.contains(".base-gbl") && s.ends_with(".base/graph.trig")
+        }));
     }
 
     #[test]
@@ -263,7 +273,8 @@ mod tests {
         std::fs::write(base_dir.join("graph.trig"), "# empty").unwrap();
 
         let files = discover_trig_files(tmp.path());
-        assert_eq!(files.len(), 1);
-        assert!(files[0].ends_with(".base/graph.trig"));
+        // Must include the workspace graph we just created
+        assert!(files.iter().any(|f| f.ends_with(".base/graph.trig")
+            && !f.to_string_lossy().contains(".base-gbl")));
     }
 }
