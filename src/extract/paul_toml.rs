@@ -242,5 +242,7 @@ pub fn ingest_paul_projects(
 fn escape(s: &str) -> String {
     s.replace('\\', "\\\\")
         .replace('"', "\\\"")
+        .replace('\r', "")
         .replace('\n', "\\n")
+        .replace('\t', "\\t")
 }

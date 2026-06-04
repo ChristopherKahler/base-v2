@@ -55,8 +55,9 @@ pub fn sync(cwd: &Path, config: &BaseConfig, incremental: bool) -> Result<SyncRe
         }
 
         // Route to extractor by file type
+        // Normalize line endings: strip \r so CRLF files don't break SPARQL literals.
         let content = match std::fs::read_to_string(file_path) {
-            Ok(c) => c,
+            Ok(c) => c.replace('\r', ""),
             Err(_) => {
                 report.skipped += 1;
                 continue;
@@ -158,9 +159,7 @@ pub fn sync(cwd: &Path, config: &BaseConfig, incremental: bool) -> Result<SyncRe
 
 /// Build a file IRI from a relative path.
 pub fn file_iri_from_path(ns: &NamespaceConfig, rel_path: &str) -> String {
-    let slug = rel_path
-        .replace(['/', '\\', '.'], "-")
-        .to_lowercase();
+    let slug = crate::crud::slugify(rel_path);
     format!("{}document/{}", ns.uri, slug)
 }
 

@@ -273,10 +273,8 @@ fn extract_markdown_links(line: &str, triples: &mut Vec<(String, String)>, ns: &
         let path = paren_content[..paren_end].trim();
 
         if is_local_path(path) {
-            let slug = path
-                .trim_start_matches("./")
-                .replace(['/', '\\', '.'], "-")
-                .to_lowercase();
+            let clean = path.trim_start_matches("./");
+            let slug = crate::crud::slugify(clean);
             triples.push((
                 format!("{p}:references"),
                 format!("<{}document/{}>", ns.uri, slug),
@@ -300,7 +298,7 @@ fn extract_wikilinks(line: &str, triples: &mut Vec<(String, String)>, ns: &Names
 
         let link = after[..end].trim();
         if !link.is_empty() {
-            let slug = link.replace(['/', '\\', '.', ' '], "-").to_lowercase();
+            let slug = crate::crud::slugify(link);
             triples.push((
                 format!("{p}:references"),
                 format!("<{}entity/{}>", ns.uri, slug),
@@ -348,7 +346,7 @@ fn extract_at_mentions(line: &str, triples: &mut Vec<(String, String)>, ns: &Nam
                 .trim_start_matches("~/")
                 .trim_start_matches("./")
                 .trim_start_matches('~');
-            let slug = clean.replace(['/', '\\', '.'], "-").to_lowercase();
+            let slug = crate::crud::slugify(clean);
             triples.push((
                 format!("{p}:references"),
                 format!("<{}document/{}>", ns.uri, slug),
@@ -371,7 +369,9 @@ fn is_local_path(path: &str) -> bool {
 fn escape(s: &str) -> String {
     s.replace('\\', "\\\\")
         .replace('"', "\\\"")
+        .replace('\r', "")
         .replace('\n', "\\n")
+        .replace('\t', "\\t")
 }
 
 #[cfg(test)]

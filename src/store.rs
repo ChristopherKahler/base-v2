@@ -40,6 +40,7 @@ pub fn query(store: &Store, sparql: &str) -> Result<QueryResults> {
 }
 
 /// Serialize the store to TriG and write atomically (temp + rename).
+/// Validates the output by re-parsing before committing the rename.
 pub fn write_back(store: &Store, path: &Path) -> Result<()> {
     let parent = path
         .parent()
@@ -54,6 +55,24 @@ pub fn write_back(store: &Store, path: &Path) -> Result<()> {
     store
         .dump_to_writer(RdfSerializer::from_format(RdfFormat::TriG), &mut tmp_file)
         .context("Failed to serialize store to TriG")?;
+
+    // Validate: re-parse the written file to catch serializer corruption.
+    // If oxigraph's own serializer produced invalid TriG, abort instead of
+    // overwriting good data with a corrupt file.
+    {
+        let check_file = fs::File::open(&tmp_path)
+            .with_context(|| format!("Failed to re-open {} for validation", tmp_path.display()))?;
+        let check_reader = BufReader::new(check_file);
+        let check_store = Store::new().context("Failed to create validation store")?;
+        if let Err(e) = check_store.load_from_reader(RdfFormat::TriG, check_reader) {
+            // Remove the corrupt temp file, leave the original intact
+            let _ = fs::remove_file(&tmp_path);
+            anyhow::bail!(
+                "write_back validation failed — serializer produced invalid TriG, \
+                 original file preserved. Parse error: {e}"
+            );
+        }
+    }
 
     // Atomic rename
     fs::rename(&tmp_path, path).with_context(|| {
