@@ -93,13 +93,21 @@ pub fn uninstall(purge: bool) -> Result<()> {
     let claude_md = home.join(".claude").join("CLAUDE.md");
     remove_claude_md_section(&claude_md)?;
 
-    // 3. Remove binary
+    // 3. Remove binary (try both base and base.exe for Windows compatibility)
     let binary = home.join(".local").join("bin").join("base");
-    if binary.exists() {
-        print!("3. Remove binary ... ");
-        std::fs::remove_file(&binary)?;
-        println!("✓ removed {}", binary.display());
-    } else {
+    let binary_exe = home.join(".local").join("bin").join("base.exe");
+    let mut removed_any = false;
+    for bin in [&binary, &binary_exe] {
+        if bin.exists() {
+            if !removed_any {
+                print!("3. Remove binary ... ");
+            }
+            std::fs::remove_file(bin)?;
+            println!("✓ removed {}", bin.display());
+            removed_any = true;
+        }
+    }
+    if !removed_any {
         println!("3. Binary not found at {} — skipped", binary.display());
     }
 
