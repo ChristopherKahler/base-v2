@@ -21,7 +21,8 @@ pub fn add(
     let graph = crud::workspace_graph_iri(ns, &ws_slug);
     let now = crud::now_iso();
     let p = &ns.prefix;
-    let desc = description.unwrap_or("");
+    let name = crud::escape_sparql_literal(name);
+    let desc = crud::escape_sparql_literal(description.unwrap_or(""));
 
     let sparql = format!(
         "INSERT DATA {{\n\

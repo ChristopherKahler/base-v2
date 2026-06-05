@@ -148,18 +148,18 @@ fn ingest_paul_projects(config: &BaseConfig, cwd: &Path) {
 fn discover_trig_files(cwd: &Path) -> Vec<PathBuf> {
     let mut files = Vec::new();
 
-    // Global tier: ~/.base-gbl/.base/graph.trig
+    // Global tier: ~/.base-gbl/.base/graph.nq
     if let Some(home) = dirs::home_dir() {
-        let global = home.join(".base-gbl").join(".base").join("graph.trig");
+        let global = home.join(".base-gbl").join(".base").join("graph.nq");
         if global.exists() {
             files.push(global);
         }
     }
 
-    // Workspace tier: walk upward from cwd to find .base/graph.trig
+    // Workspace tier: walk upward from cwd to find .base/graph.nq
     let mut dir = cwd.to_path_buf();
     loop {
-        let ws = dir.join(".base").join("graph.trig");
+        let ws = dir.join(".base").join("graph.nq");
         if ws.exists() {
             files.push(ws);
             break;
@@ -257,11 +257,11 @@ mod tests {
     fn discover_finds_no_workspace_trig_in_empty_dir() {
         let tmp = tempfile::tempdir().unwrap();
         let files = discover_trig_files(tmp.path());
-        // May find global graph if ~/.base-gbl/.base/graph.trig exists on host
+        // May find global graph if ~/.base-gbl/.base/graph.nq exists on host
         // but should NOT find a workspace graph
         assert!(!files.iter().any(|f| {
             let s = f.to_string_lossy();
-            !s.contains(".base-gbl") && s.ends_with(".base/graph.trig")
+            !s.contains(".base-gbl") && s.ends_with(".base/graph.nq")
         }));
     }
 
@@ -270,11 +270,11 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let base_dir = tmp.path().join(".base");
         std::fs::create_dir_all(&base_dir).unwrap();
-        std::fs::write(base_dir.join("graph.trig"), "# empty").unwrap();
+        std::fs::write(base_dir.join("graph.nq"), "# empty").unwrap();
 
         let files = discover_trig_files(tmp.path());
         // Must include the workspace graph we just created
-        assert!(files.iter().any(|f| f.ends_with(".base/graph.trig")
+        assert!(files.iter().any(|f| f.ends_with(".base/graph.nq")
             && !f.to_string_lossy().contains(".base-gbl")));
     }
 }

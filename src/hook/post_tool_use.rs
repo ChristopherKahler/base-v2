@@ -129,11 +129,11 @@ fn extract_file_paths(event: &serde_json::Value) -> Vec<PathBuf> {
     paths
 }
 
-/// Find the workspace .base/graph.trig by walking upward from cwd.
+/// Find the workspace .base/graph.nq by walking upward from cwd.
 fn find_workspace_trig(cwd: &Path) -> Option<PathBuf> {
     let mut dir = cwd.to_path_buf();
     loop {
-        let candidate = dir.join(".base").join("graph.trig");
+        let candidate = dir.join(".base").join("graph.nq");
         if candidate.exists() {
             return Some(candidate);
         }
@@ -179,14 +179,14 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let base_dir = tmp.path().join(".base");
         std::fs::create_dir_all(&base_dir).unwrap();
-        std::fs::write(base_dir.join("graph.trig"), "# test").unwrap();
+        std::fs::write(base_dir.join("graph.nq"), "# test").unwrap();
 
         let sub = tmp.path().join("deep").join("nested");
         std::fs::create_dir_all(&sub).unwrap();
 
         let found = find_workspace_trig(&sub);
         assert!(found.is_some());
-        assert!(found.unwrap().ends_with(".base/graph.trig"));
+        assert!(found.unwrap().ends_with(".base/graph.nq"));
     }
 
     #[test]

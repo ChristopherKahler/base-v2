@@ -99,7 +99,7 @@ pub fn run(target: &Path) -> Result<()> {
     println!("  Path: {}", target.display());
     println!("  Config: .base/base.toml");
     println!("  Domains: .base/domains.toml");
-    println!("  Graph: .base/graph.trig\n");
+    println!("  Graph: .base/graph.nq\n");
     println!("Next:");
     println!("  Add workspace-specific domain triggers to .base/domains.toml");
     println!("  Add rules: base rule add --domain MY-DOMAIN --text \"...\"");

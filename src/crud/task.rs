@@ -32,6 +32,8 @@ pub fn add(
         String::new()
     };
 
+    let name = crud::escape_sparql_literal(name);
+
     let sparql = format!(
         "INSERT DATA {{\n\
            GRAPH <{graph}> {{\n\

@@ -24,6 +24,9 @@ pub fn add(
         .map(|s| s.to_string())
         .unwrap_or_else(|| cwd.to_string_lossy().to_string());
 
+    let name = crud::escape_sparql_literal(name);
+    let project_path = crud::escape_sparql_literal(&project_path);
+
     let sparql = format!(
         "INSERT DATA {{\n\
            GRAPH <{graph}> {{\n\
@@ -41,10 +44,10 @@ pub fn add(
     crud::load_and_mutate(cwd, ns, &sparql)?;
 
     // Auto-create domain trigger with path matching (filesystem-first, no keywords by default)
-    auto_create_domain(cwd, name, &project_path)?;
+    auto_create_domain(cwd, &name, &project_path)?;
 
     // Link project to its domain in the graph
-    let domain_slug = crud::slugify(name);
+    let domain_slug = crud::slugify(&name);
     let domain_iri = crud::build_iri(ns, "domain", &domain_slug);
     let link_sparql = format!(
         "INSERT DATA {{ GRAPH <{graph}> {{ <{iri}> {p}:hasDomain <{domain_iri}> }} }}"

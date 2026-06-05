@@ -451,7 +451,7 @@ pub fn ensure_domain_sync_pub(config: &BaseConfig, cwd: &Path) {
 /// Uses a timestamp marker file to avoid re-syncing on every prompt.
 /// Syncs both global (~/.base-gbl/) and workspace tiers.
 fn ensure_domain_sync(config: &BaseConfig, cwd: &Path) {
-    // Global tier: sync ~/.base-gbl/domains.toml → ~/.base-gbl/.base/graph.trig
+    // Global tier: sync ~/.base-gbl/domains.toml → ~/.base-gbl/.base/graph.nq
     if let Some(home) = dirs::home_dir() {
         let global_dir = home.join(".base-gbl");
         let global_base = global_dir.join(".base");
@@ -469,7 +469,7 @@ fn ensure_domain_sync(config: &BaseConfig, cwd: &Path) {
         }
     }
 
-    // Workspace tier: sync {workspace}/.base/domains.toml → {workspace}/.base/graph.trig
+    // Workspace tier: sync {workspace}/.base/domains.toml → {workspace}/.base/graph.nq
     let base_dir = match crate::config::find_workspace_base(cwd) {
         Some(d) => d,
         None => return,
@@ -507,23 +507,23 @@ fn needs_sync_check(domains_toml: &Path, marker: &Path) -> bool {
 
 // ─── Graph loading ──────────────────────────────────────────
 
-/// Load a merged graph from global (~/.base-gbl/.base/graph.trig) and workspace tiers.
+/// Load a merged graph from global (~/.base-gbl/.base/graph.nq) and workspace tiers.
 /// Both are loaded into one Oxigraph store so SPARQL queries span all tiers.
 /// Returns None only if neither graph exists (fail-open).
 fn load_merged_graph(cwd: &Path) -> Option<oxigraph::store::Store> {
     let mut paths: Vec<std::path::PathBuf> = Vec::new();
 
-    // Global tier: ~/.base-gbl/.base/graph.trig
+    // Global tier: ~/.base-gbl/.base/graph.nq
     if let Some(home) = dirs::home_dir() {
-        let global_trig = home.join(".base-gbl").join(".base").join("graph.trig");
+        let global_trig = home.join(".base-gbl").join(".base").join("graph.nq");
         if global_trig.exists() {
             paths.push(global_trig);
         }
     }
 
-    // Workspace tier: {workspace}/.base/graph.trig
+    // Workspace tier: {workspace}/.base/graph.nq
     if let Some(base_dir) = crate::config::find_workspace_base(cwd) {
-        let ws_trig = base_dir.join("graph.trig");
+        let ws_trig = base_dir.join("graph.nq");
         if ws_trig.exists() {
             paths.push(ws_trig);
         }

@@ -46,6 +46,14 @@ pub fn workspace_slug(cwd: &Path) -> String {
     }
 }
 
+/// Escape a string for safe interpolation into a SPARQL literal.
+/// Handles backslashes, double quotes, and newlines.
+pub fn escape_sparql_literal(s: &str) -> String {
+    s.replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n")
+}
+
 /// Convert a name to a URL-safe slug: lowercase, non-alphanumeric→hyphens, deduped.
 pub fn slugify(name: &str) -> String {
     name.to_lowercase()
@@ -110,10 +118,10 @@ fn find_or_create_base(cwd: &Path) -> Result<PathBuf> {
     }
 }
 
-/// Load the workspace store. Creates .base/ and an empty store if graph.trig doesn't exist.
+/// Load the workspace store. Creates .base/ and an empty store if graph.nq doesn't exist.
 pub fn load_workspace_store(cwd: &Path) -> Result<(Store, PathBuf)> {
     let base_dir = find_or_create_base(cwd)?;
-    let trig_path = base_dir.join("graph.trig");
+    let trig_path = base_dir.join("graph.nq");
 
     let store = if trig_path.exists() {
         crate::store::load_graph(&trig_path)?
@@ -138,7 +146,7 @@ pub fn load_and_mutate(cwd: &Path, ns: &NamespaceConfig, sparql: &str) -> Result
 pub fn load_and_query(cwd: &Path, ns: &NamespaceConfig, sparql: &str) -> Result<QueryResults> {
     let base_dir = crate::config::find_workspace_base(cwd)
         .context("no .base/ directory found. Use --global for global rules, or run `base scaffold` to create a workspace.")?;
-    let trig_path = base_dir.join("graph.trig");
+    let trig_path = base_dir.join("graph.nq");
     let store = crate::store::load_graph(&trig_path)?;
     let full_sparql = format!("{}\n{}", prefixes(ns), sparql);
     crate::store::query(&store, &full_sparql)
@@ -161,7 +169,7 @@ fn capitalize_first(s: &str) -> String {
 pub fn resolve_slug(cwd: &Path, ns: &NamespaceConfig, entity_type: &str, input: &str) -> Result<String> {
     let base_dir = crate::config::find_workspace_base(cwd)
         .context("no .base/ directory found. Use --global for global rules, or run `base scaffold` to create a workspace.")?;
-    let trig_path = base_dir.join("graph.trig");
+    let trig_path = base_dir.join("graph.nq");
     let store = crate::store::load_graph(&trig_path)?;
     let pfx = prefixes(ns);
     let p = &ns.prefix;

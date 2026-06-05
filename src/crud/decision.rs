@@ -21,8 +21,14 @@ pub fn log(
     let now = crud::now_iso();
     let p = &ns.prefix;
 
+    let decision_text = crud::escape_sparql_literal(decision_text);
+    let rationale = crud::escape_sparql_literal(rationale);
+
     let recall_triple = recall
-        .map(|r| format!("      {p}:recall \"{r}\" ;\n"))
+        .map(|r| {
+            let r = crud::escape_sparql_literal(r);
+            format!("      {p}:recall \"{r}\" ;\n")
+        })
         .unwrap_or_default();
 
     let domain_slug = crud::slugify(domain);

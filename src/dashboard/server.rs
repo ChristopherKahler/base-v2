@@ -23,10 +23,10 @@ pub struct AppState {
 pub async fn start(port: u16, cwd: PathBuf) {
     let config = BaseConfig::load(&cwd);
 
-    // Collect all workspace graph.trig paths — primary + registered workspaces
+    // Collect all workspace graph.nq paths — primary + registered workspaces
     let trig_path = crate::config::find_workspace_base(&cwd)
         .unwrap_or_else(|| cwd.join(".base"))
-        .join("graph.trig");
+        .join("graph.nq");
 
     let mut trig_paths: Vec<PathBuf> = vec![trig_path.clone()];
 
@@ -38,7 +38,7 @@ pub async fn start(port: u16, cwd: PathBuf) {
                 if let Some(workspaces) = table.get("workspace").and_then(|v| v.as_array()) {
                     for ws in workspaces {
                         if let Some(path_str) = ws.get("path").and_then(|v| v.as_str()) {
-                            let candidate = PathBuf::from(path_str).join(".base/graph.trig");
+                            let candidate = PathBuf::from(path_str).join(".base/graph.nq");
                             if candidate.exists() && candidate != trig_path {
                                 trig_paths.push(candidate);
                             }
@@ -49,7 +49,7 @@ pub async fn start(port: u16, cwd: PathBuf) {
         }
 
         // Also check global tier
-        let global_trig = home.join(".base-gbl/graph.trig");
+        let global_trig = home.join(".base-gbl/graph.nq");
         if global_trig.exists() {
             trig_paths.push(global_trig);
         }
@@ -61,7 +61,7 @@ pub async fn start(port: u16, cwd: PathBuf) {
         .collect();
 
     let store = if existing_paths.is_empty() {
-        eprintln!("No graph.trig files found. Run `base scaffold` then `base sync`.");
+        eprintln!("No graph.nq files found. Run `base scaffold` then `base sync`.");
         oxigraph::store::Store::new().expect("in-memory store")
     } else {
         println!("Loading {} graph(s):", existing_paths.len());

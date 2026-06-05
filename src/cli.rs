@@ -687,7 +687,7 @@ pub fn run() {
 
                 let base_dir = base::config::find_workspace_base(&cwd)
                     .unwrap_or_else(|| cwd.join(".base"));
-                let graph_path = base_dir.join("graph.trig");
+                let graph_path = base_dir.join("graph.nq");
                 let ast_ttl = base_dir.join("ast.ttl");
 
                 println!("AST extraction: {} → {}", target_dir, graph_path.display());
@@ -701,7 +701,7 @@ pub fn run() {
 
                 match status {
                     Ok(s) if s.success() => {
-                        // Append AST TTL into graph.trig under a named graph
+                        // Append AST TTL into graph.nq under a named graph
                         match std::fs::read_to_string(&ast_ttl) {
                             Ok(ttl_content) => {
                                 let mut graph_content = std::fs::read_to_string(&graph_path)
@@ -721,8 +721,8 @@ pub fn run() {
                                 graph_content.push_str(&ttl_content);
                                 graph_content.push_str("\n# --- AST END ---\n");
                                 match std::fs::write(&graph_path, graph_content) {
-                                    Ok(()) => println!("AST extraction complete — merged into graph.trig"),
-                                    Err(e) => eprintln!("Failed to write graph.trig: {e}"),
+                                    Ok(()) => println!("AST extraction complete — merged into graph.nq"),
+                                    Err(e) => eprintln!("Failed to write graph.nq: {e}"),
                                 }
                             }
                             Err(e) => eprintln!("Failed to read AST output: {e}"),

@@ -424,19 +424,19 @@ fn format_toml_rules(domain_def: &domain::DomainDef) -> String {
     out
 }
 
-/// Load a merged graph from global (~/.base-gbl/.base/graph.trig) and workspace tiers.
+/// Load a merged graph from global (~/.base-gbl/.base/graph.nq) and workspace tiers.
 fn load_merged_graph(cwd: &Path) -> Option<oxigraph::store::Store> {
     let mut paths: Vec<std::path::PathBuf> = Vec::new();
 
     if let Some(home) = dirs::home_dir() {
-        let global_trig = home.join(".base-gbl").join(".base").join("graph.trig");
+        let global_trig = home.join(".base-gbl").join(".base").join("graph.nq");
         if global_trig.exists() {
             paths.push(global_trig);
         }
     }
 
     if let Some(base_dir) = crate::config::find_workspace_base(cwd) {
-        let ws_trig = base_dir.join("graph.trig");
+        let ws_trig = base_dir.join("graph.nq");
         if ws_trig.exists() {
             paths.push(ws_trig);
         }
