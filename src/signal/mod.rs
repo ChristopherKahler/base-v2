@@ -1,4 +1,5 @@
 pub mod active_awareness;
+pub mod flow_resurface;
 pub mod pulse;
 pub mod staleness;
 pub mod suppression;
@@ -41,6 +42,14 @@ pub fn run_signals(cwd: &Path, config: &BaseConfig) -> Result<String> {
         && !output.is_empty() {
             results.push(SignalResult { name: "staleness".into(), priority: 3, output });
         }
+
+    // Flow resurface signal (gated by [flow] config)
+    if config.flow.enabled && config.flow.resurface {
+        if let Ok(output) = flow_resurface::run(cwd, ns, &config.flow)
+            && !output.is_empty() {
+                results.push(SignalResult { name: "flow-resurface".into(), priority: 2, output });
+            }
+    }
 
     // Sort by priority
     results.sort_by_key(|r| r.priority);

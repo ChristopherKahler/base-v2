@@ -185,6 +185,103 @@ pub fn recall(
     Ok(())
 }
 
+/// Increment mention count on an existing note. Returns the new count.
+pub fn mention(
+    cwd: &Path,
+    ns: &NamespaceConfig,
+    slug: &str,
+    context: Option<&str>,
+) -> Result<u32> {
+    let p = &ns.prefix;
+
+    // First, query current mention count
+    let iri = crud::build_iri(ns, "note", slug);
+    let count_sparql = format!(
+        "SELECT ?count WHERE {{\n\
+           GRAPH ?g {{\n\
+             <{iri}> a {p}:Note .\n\
+             OPTIONAL {{ <{iri}> {p}:mentionCount ?count }}\n\
+           }}\n\
+         }}"
+    );
+
+    let results = crud::load_and_query(cwd, ns, &count_sparql)?;
+    let current_count = if let QueryResults::Solutions(solutions) = results {
+        solutions
+            .filter_map(|r| r.ok())
+            .next()
+            .and_then(|row| {
+                row.get("count")
+                    .map(|t| crud::term_display(t.into()))
+            })
+            .and_then(|s| s.parse::<u32>().ok())
+            .unwrap_or(0)
+    } else {
+        // Note not found
+        anyhow::bail!("Note not found: {slug}");
+    };
+
+    let new_count = current_count + 1;
+    let now = crud::now_iso();
+
+    // Build update: delete old count/lastMentioned, insert new values
+    let mut sparql = format!(
+        "DELETE {{\n\
+           GRAPH ?g {{\n\
+             <{iri}> {p}:mentionCount ?oldCount .\n\
+             <{iri}> {p}:lastMentioned ?oldMentioned .\n\
+           }}\n\
+         }} WHERE {{\n\
+           GRAPH ?g {{\n\
+             <{iri}> a {p}:Note .\n\
+             OPTIONAL {{ <{iri}> {p}:mentionCount ?oldCount }}\n\
+             OPTIONAL {{ <{iri}> {p}:lastMentioned ?oldMentioned }}\n\
+           }}\n\
+         }};\n\
+         INSERT DATA {{\n\
+           GRAPH <{graph}> {{\n\
+             <{iri}> {p}:mentionCount {new_count} .\n\
+             <{iri}> {p}:lastMentioned \"{now}\"^^xsd:dateTime .\n\
+           }}\n\
+         }}",
+        graph = {
+            let ws_slug = crud::workspace_slug(cwd);
+            crud::workspace_graph_iri(ns, &ws_slug)
+        },
+    );
+
+    // If context provided, append to note text
+    if let Some(ctx) = context {
+        let escaped = crud::escape_sparql_literal(ctx);
+        let append_text = format!("\\n\\n[Mention {new_count}: {escaped}]");
+        let ws_slug = crud::workspace_slug(cwd);
+        let graph = crud::workspace_graph_iri(ns, &ws_slug);
+
+        sparql.push_str(&format!(
+            ";\n\
+             DELETE {{\n\
+               GRAPH <{graph}> {{\n\
+                 <{iri}> {p}:noteText ?oldText .\n\
+               }}\n\
+             }}\n\
+             INSERT {{\n\
+               GRAPH <{graph}> {{\n\
+                 <{iri}> {p}:noteText ?newText .\n\
+               }}\n\
+             }}\n\
+             WHERE {{\n\
+               GRAPH <{graph}> {{\n\
+                 <{iri}> {p}:noteText ?oldText .\n\
+                 BIND(CONCAT(STR(?oldText), \"{append_text}\") AS ?newText)\n\
+               }}\n\
+             }}"
+        ));
+    }
+
+    crud::load_and_mutate(cwd, ns, &sparql)?;
+    Ok(new_count)
+}
+
 /// Query notes linked to a specific domain IRI. Returns (type, text) pairs.
 /// Used by hook injection to surface notes alongside domain rules.
 pub fn notes_for_domain(

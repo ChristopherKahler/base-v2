@@ -12,9 +12,52 @@ use oxigraph::store::Store;
 /// TriG serializer (one quad per line, no stateful graph-block machine).
 const GRAPH_FORMAT: RdfFormat = RdfFormat::NQuads;
 
+/// Auto-migrate a legacy graph.trig to graph.nq if present.
+/// Loads the TriG file, writes it as NQuads, and removes the old file.
+/// Returns Ok(true) if migration happened, Ok(false) if no legacy file found.
+pub fn migrate_trig_to_nq(nq_path: &Path) -> Result<bool> {
+    let trig_path = nq_path.with_extension("trig");
+    if !trig_path.exists() {
+        return Ok(false);
+    }
+
+    // If graph.nq already exists alongside graph.trig, just remove the old one
+    if nq_path.exists() {
+        let _ = fs::remove_file(&trig_path);
+        return Ok(false);
+    }
+
+    eprintln!("Migrating {} → {} ...", trig_path.display(), nq_path.display());
+
+    // Load from TriG format
+    let store = Store::new().context("Failed to create migration store")?;
+    let file = fs::File::open(&trig_path)
+        .with_context(|| format!("Failed to open legacy {}", trig_path.display()))?;
+    let reader = BufReader::new(file);
+    store
+        .load_from_reader(RdfFormat::TriG, reader)
+        .with_context(|| format!(
+            "Failed to parse legacy {}. File may be corrupted — \
+             delete it and run `base sync` to rebuild.",
+            trig_path.display()
+        ))?;
+
+    // Write as NQuads using write_back (includes validation)
+    write_back(&store, nq_path)?;
+
+    // Remove old TriG file
+    let _ = fs::remove_file(&trig_path);
+
+    eprintln!("Migration complete. Legacy graph.trig removed.");
+    Ok(true)
+}
+
 /// Load an NQuads file into a new in-memory store.
-/// Each named graph in the file becomes a named graph in the store.
+/// Auto-migrates legacy graph.trig if graph.nq doesn't exist yet.
 pub fn load_graph(path: &Path) -> Result<Store> {
+    // Auto-migrate legacy TriG if needed
+    migrate_trig_to_nq(path)?;
+
     let store = Store::new().context("Failed to create in-memory store")?;
     let file = fs::File::open(path).with_context(|| format!("Failed to open {}", path.display()))?;
     let reader = BufReader::new(file);
@@ -25,9 +68,13 @@ pub fn load_graph(path: &Path) -> Result<Store> {
 }
 
 /// Load multiple graph files into a single in-memory store (cross-tier query).
+/// Auto-migrates legacy TriG files if needed.
 pub fn load_graphs(paths: &[&Path]) -> Result<Store> {
     let store = Store::new().context("Failed to create in-memory store")?;
     for path in paths {
+        // Auto-migrate legacy TriG if needed
+        migrate_trig_to_nq(path)?;
+
         let file = fs::File::open(path).with_context(|| format!("Failed to open {}", path.display()))?;
         let reader = BufReader::new(file);
         store

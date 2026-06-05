@@ -36,6 +36,12 @@ pub fn handle(config: &BaseConfig, cwd: &Path) -> Result<()> {
     if let Ok(signal_output) = crate::signal::run_signals(cwd, config)
         && !signal_output.is_empty() {
             print!("{signal_output}");
+
+            // Flow protocol injection (static behavioral rules) — after signals
+            if config.flow.enabled && config.flow.protocol {
+                print!("\n{}", crate::hook::flow::protocol_block());
+            }
+
             return Ok(());
         }
 
@@ -77,6 +83,14 @@ pub fn handle(config: &BaseConfig, cwd: &Path) -> Result<()> {
 
     if !output.is_empty() {
         print!("{}", output.trim_end());
+    }
+
+    // Flow protocol injection — also in fallback path
+    if config.flow.enabled && config.flow.protocol {
+        if !output.is_empty() {
+            print!("\n");
+        }
+        print!("{}", crate::hook::flow::protocol_block());
     }
 
     Ok(())

@@ -36,6 +36,16 @@ pub fn run(cwd: &Path, ns: &NamespaceConfig, flow: &FlowConfig) -> Result<String
         }
     }
 
+    // Sub-query 4: Mention threshold scan (gated by flow.mentions)
+    // Find notes mentioned >= threshold times — candidates for project promotion
+    if flow.mentions {
+        if let Ok(output) = mention_threshold_scan(cwd, ns, flow.mention_threshold) {
+            if !output.is_empty() {
+                sections.push(output);
+            }
+        }
+    }
+
     if sections.is_empty() {
         return Ok(String::new());
     }
@@ -190,6 +200,54 @@ fn deferred_orphan_scan(cwd: &Path, ns: &NamespaceConfig) -> Result<String> {
     let mut output = String::from("[Resurface]\n");
     for (name, resurface_at) in &rows {
         output.push_str(&format!("- {name} (deferred until {resurface_at}, now past due)\n"));
+    }
+
+    Ok(output)
+}
+
+/// Find notes with mentionCount >= threshold — recurring ideas that should be promoted.
+fn mention_threshold_scan(cwd: &Path, ns: &NamespaceConfig, threshold: u32) -> Result<String> {
+    let p = &ns.prefix;
+    let sparql = format!(
+        "SELECT ?text ?count WHERE {{\n\
+           GRAPH ?g {{\n\
+             ?note a {p}:Note ;\n\
+               {p}:noteText ?text ;\n\
+               {p}:mentionCount ?count ;\n\
+               {p}:status \"active\" .\n\
+             FILTER(?count >= {threshold})\n\
+           }}\n\
+         }}\n\
+         ORDER BY DESC(?count)"
+    );
+
+    let results = crud::load_and_query(cwd, ns, &sparql)?;
+    let QueryResults::Solutions(solutions) = results else {
+        return Ok(String::new());
+    };
+
+    let rows: Vec<(String, String)> = solutions
+        .filter_map(|r| r.ok())
+        .map(|row| {
+            let text = row.get("text").map(|t| crud::term_display(t.into())).unwrap_or_default();
+            let count = row.get("count").map(|t| crud::term_display(t.into())).unwrap_or_default();
+            // Truncate long text for signal display
+            let preview = if text.len() > 80 {
+                format!("{}...", &text[..80])
+            } else {
+                text
+            };
+            (preview, count)
+        })
+        .collect();
+
+    if rows.is_empty() {
+        return Ok(String::new());
+    }
+
+    let mut output = String::from("[Recurring]\n");
+    for (preview, count) in &rows {
+        output.push_str(&format!("- \"{preview}\" (mentioned {count} times — consider promoting to project)\n"));
     }
 
     Ok(output)

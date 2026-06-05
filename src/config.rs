@@ -60,6 +60,10 @@ pub struct BaseConfig {
     #[serde(default)]
     pub devmode: DevmodeConfig,
     #[serde(default)]
+    pub flow: FlowConfig,
+    #[serde(default)]
+    pub memory: MemoryConfig,
+    #[serde(default)]
     pub workspace: Vec<WorkspaceEntry>,
 }
 
@@ -110,6 +114,70 @@ impl Default for BracketConfig {
 pub struct DevmodeConfig {
     #[serde(default)]
     pub enabled: bool,
+}
+
+// ─── Flow Config ────────────────────────────────────────────
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct FlowConfig {
+    /// Master switch — opt-in feature, default false
+    #[serde(default)]
+    pub enabled: bool,
+    /// Blocked-by scanning, stale detection, deferred orphan queries
+    #[serde(default = "default_true")]
+    pub resurface: bool,
+    /// Static behavioral rules injection
+    #[serde(default = "default_true")]
+    pub protocol: bool,
+    /// Recurring idea tracking
+    #[serde(default)]
+    pub mentions: bool,
+    /// Days before an active entity is considered stale
+    #[serde(default = "default_flow_stale_days")]
+    pub stale_threshold_days: u32,
+    /// Mentions needed before surfacing as recurring
+    #[serde(default = "default_mention_threshold")]
+    pub mention_threshold: u32,
+}
+
+fn default_true() -> bool { true }
+fn default_flow_stale_days() -> u32 { 14 }
+fn default_mention_threshold() -> u32 { 3 }
+
+impl Default for FlowConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            resurface: default_true(),
+            protocol: default_true(),
+            mentions: false,
+            stale_threshold_days: default_flow_stale_days(),
+            mention_threshold: default_mention_threshold(),
+        }
+    }
+}
+
+// ─── Memory Config ──────────────────────────────────────────
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct MemoryConfig {
+    /// Master switch — opt-in feature, default false
+    #[serde(default)]
+    pub enabled: bool,
+    /// "claude" = native memory, "both" = mirror to graph + flat files, "base" = graph only
+    #[serde(default = "default_memory_mode")]
+    pub mode: String,
+}
+
+fn default_memory_mode() -> String { "claude".into() }
+
+impl Default for MemoryConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            mode: default_memory_mode(),
+        }
+    }
 }
 
 // ─── Signal Config ───────────────────────────────────────────

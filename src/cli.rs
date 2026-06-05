@@ -96,21 +96,27 @@ pub enum Commands {
     },
     /// Graph-backed structured memory
     Learn {
-        /// The memory text to store
+        /// The memory text to store (required unless --mention)
         #[arg(long)]
-        text: String,
+        text: Option<String>,
         /// Note type: insight, correction, decision, commitment, shift
         #[arg(long, default_value = "insight")]
         r#type: String,
-        /// Link to a domain (REQUIRED — notes without domain edges are orphans)
+        /// Link to a domain (required unless --mention)
         #[arg(long)]
-        domain: String,
+        domain: Option<String>,
         /// Link to a project (optional additional edge)
         #[arg(long)]
         project: Option<String>,
         /// Link to an entity (optional additional edge)
         #[arg(long)]
         entity: Option<String>,
+        /// Record a mention of an existing note (pass the slug)
+        #[arg(long)]
+        mention: Option<String>,
+        /// Context for the mention
+        #[arg(long)]
+        context: Option<String>,
     },
     /// Search notes by keyword and/or domain
     Recall {
@@ -805,18 +811,40 @@ pub fn run() {
         },
 
         // ─── Learn ────────────────────────────────────────
-        Some(Commands::Learn { text, r#type, domain, project, entity }) => {
-            match crud::note::learn(
-                &cwd,
-                &config.namespace,
-                &text,
-                &r#type,
-                Some(&domain),
-                project.as_deref(),
-                entity.as_deref(),
-            ) {
-                Ok(slug) => println!("Learned: '{text}' (slug: {slug}, type: {}, domain: {domain})", r#type),
-                Err(e) => eprintln!("Failed: {e}"),
+        Some(Commands::Learn { text, r#type, domain, project, entity, mention, context }) => {
+            if let Some(slug) = mention {
+                // Mention mode: increment mention count on existing note
+                match crud::note::mention(
+                    &cwd,
+                    &config.namespace,
+                    &slug,
+                    context.as_deref(),
+                ) {
+                    Ok(count) => println!("Mention recorded: {slug} (count: {count})"),
+                    Err(e) => eprintln!("Failed: {e}"),
+                }
+            } else {
+                // Standard learn mode: create a new note
+                let Some(text) = text else {
+                    eprintln!("--text is required (or use --mention <slug> for mention tracking)");
+                    std::process::exit(1);
+                };
+                let Some(domain) = domain else {
+                    eprintln!("--domain is required (or use --mention <slug> for mention tracking)");
+                    std::process::exit(1);
+                };
+                match crud::note::learn(
+                    &cwd,
+                    &config.namespace,
+                    &text,
+                    &r#type,
+                    Some(&domain),
+                    project.as_deref(),
+                    entity.as_deref(),
+                ) {
+                    Ok(slug) => println!("Learned: '{text}' (slug: {slug}, type: {}, domain: {domain})", r#type),
+                    Err(e) => eprintln!("Failed: {e}"),
+                }
             }
         }
 
