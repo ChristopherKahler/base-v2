@@ -384,7 +384,8 @@ pub async fn add_note(
     }
 
     // Persist to disk
-    let _ = crate::store::write_back(&store, &state.trig_path);
+    crate::store::write_back(&store, &state.trig_path)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok(Json(NoteEntry {
         index: next_index,
@@ -440,7 +441,8 @@ pub async fn update_note(
         return Err(StatusCode::INTERNAL_SERVER_ERROR);
     }
 
-    let _ = crate::store::write_back(&store, &state.trig_path);
+    crate::store::write_back(&store, &state.trig_path)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     // Get created_at for response
     let created = {
@@ -495,7 +497,9 @@ pub async fn delete_note(
         return StatusCode::INTERNAL_SERVER_ERROR;
     }
 
-    let _ = crate::store::write_back(&store, &state.trig_path);
+    if crate::store::write_back(&store, &state.trig_path).is_err() {
+        return StatusCode::INTERNAL_SERVER_ERROR;
+    }
     StatusCode::NO_CONTENT
 }
 

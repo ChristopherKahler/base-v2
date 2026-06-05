@@ -56,6 +56,13 @@ pub fn write_back(store: &Store, path: &Path) -> Result<()> {
         .dump_to_writer(RdfSerializer::from_format(RdfFormat::TriG), &mut tmp_file)
         .context("Failed to serialize store to TriG")?;
 
+    // Flush and close the file handle before validation.
+    // Without this, the OS buffer may not be fully written when the
+    // validation reader opens the file, causing partial reads that
+    // either pass validation on incomplete data or fail while the
+    // remaining bytes flush on implicit drop — corrupting the file.
+    drop(tmp_file);
+
     // Validate: re-parse the written file to catch serializer corruption.
     // If oxigraph's own serializer produced invalid TriG, abort instead of
     // overwriting good data with a corrupt file.
