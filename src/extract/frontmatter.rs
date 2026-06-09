@@ -135,7 +135,7 @@ pub fn extract_with_project(content: &str, file_path: &str, ns: &NamespaceConfig
 
 /// Parse YAML frontmatter between --- delimiters.
 /// Returns key-value pairs. Handles simple `key: value` lines only.
-fn parse_frontmatter(content: &str) -> Option<Vec<(String, String)>> {
+pub fn parse_frontmatter(content: &str) -> Option<Vec<(String, String)>> {
     let trimmed = content.trim_start();
     if !trimmed.starts_with("---") {
         return None;
@@ -180,7 +180,7 @@ fn parse_list(value: &str) -> Vec<String> {
 }
 
 /// Get the markdown body content after the frontmatter closing delimiter.
-fn body_after_frontmatter(content: &str) -> Option<String> {
+pub fn body_after_frontmatter(content: &str) -> Option<String> {
     let trimmed = content.trim_start();
     if !trimmed.starts_with("---") {
         return None;

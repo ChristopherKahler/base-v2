@@ -57,13 +57,14 @@ pub fn learn(
     Ok(slug)
 }
 
-/// Search notes by keyword text match and/or domain linkage.
-pub fn recall(
+/// Like recall() but returns a formatted String instead of printing.
+/// Used by hook injection (memory intercept, session-start).
+pub fn recall_to_string(
     cwd: &Path,
     ns: &NamespaceConfig,
     keyword: Option<&str>,
     domain: Option<&str>,
-) -> Result<()> {
+) -> String {
     let p = &ns.prefix;
 
     let sparql = match (keyword, domain) {
@@ -143,13 +144,14 @@ pub fn recall(
                  }}"
             )
         }
-        (None, None) => {
-            eprintln!("Provide --keyword and/or --domain");
-            return Ok(());
-        }
+        (None, None) => return String::new(),
     };
 
-    let results = crud::load_and_query(cwd, ns, &sparql)?;
+    let results = match crud::load_and_query(cwd, ns, &sparql) {
+        Ok(r) => r,
+        Err(_) => return String::new(),
+    };
+
     if let QueryResults::Solutions(solutions) = results {
         let rows: Vec<Vec<String>> = solutions
             .filter_map(|r| r.ok())
@@ -172,15 +174,37 @@ pub fn recall(
             .collect();
 
         if rows.is_empty() {
-            println!("No results found.");
-            return Ok(());
+            return String::new();
         }
 
-        println!("| type | text | context | plan/date |");
-        println!("|------|------|---------|-----------|");
+        let mut out = String::from("| type | text | context | plan/date |\n");
+        out.push_str("|------|------|---------|----------|\n");
         for row in &rows {
-            println!("| {} | {} | {} | {} |", row[0], row[1], row[2], row[3]);
+            out.push_str(&format!("| {} | {} | {} | {} |\n", row[0], row[1], row[2], row[3]));
         }
+        out
+    } else {
+        String::new()
+    }
+}
+
+/// Search notes by keyword text match and/or domain linkage.
+pub fn recall(
+    cwd: &Path,
+    ns: &NamespaceConfig,
+    keyword: Option<&str>,
+    domain: Option<&str>,
+) -> Result<()> {
+    if keyword.is_none() && domain.is_none() {
+        eprintln!("Provide --keyword and/or --domain");
+        return Ok(());
+    }
+
+    let output = recall_to_string(cwd, ns, keyword, domain);
+    if output.is_empty() {
+        println!("No results found.");
+    } else {
+        print!("{output}");
     }
     Ok(())
 }
