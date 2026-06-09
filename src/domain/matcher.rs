@@ -45,8 +45,13 @@ pub fn match_domains<'a>(
             // Check if domain should be matched
             let reason = is_matched(d, &prompt_lower, active_paths)?;
 
-            // Check dedup: skip if already injected with same rules hash
-            let hash = rules_hash(&d.rules);
+            // Check dedup: skip if already injected with same content hash.
+            // Include query name in hash so query-only domains aren't deduped as "empty rules".
+            let mut hash_input: Vec<String> = d.rules.clone();
+            if let Some(ref q) = d.query {
+                hash_input.push(format!("__query__:{q}"));
+            }
+            let hash = rules_hash(&hash_input);
             if session.is_injected(&d.name, hash) {
                 return None;
             }

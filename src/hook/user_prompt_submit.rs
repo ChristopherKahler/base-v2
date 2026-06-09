@@ -107,7 +107,8 @@ pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Res
             None => (format_toml_rules(domain_def), String::new()),
         };
 
-        if rules_text.is_empty() && neighborhood_text.is_empty() {
+        // Don't short-circuit if domain has a query — query-only domains have no rules/neighborhood
+        if rules_text.is_empty() && neighborhood_text.is_empty() && domain_def.query.is_none() {
             continue;
         }
 
