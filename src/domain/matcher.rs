@@ -106,6 +106,8 @@ mod tests {
             exclude: Vec::new(),
             sticky: false,
             rules: rules.iter().map(|s| s.to_string()).collect(),
+            query: None,
+            query_format: None,
         }
     }
 

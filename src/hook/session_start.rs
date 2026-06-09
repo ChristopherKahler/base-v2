@@ -33,22 +33,36 @@ pub fn handle(config: &BaseConfig, cwd: &Path) -> Result<()> {
     check_and_banner();
 
     // Try signals first (Phase 5) — primary injection source
-    if let Ok(signal_output) = crate::signal::run_signals(cwd, config)
-        && !signal_output.is_empty() {
-            print!("{signal_output}");
+    let mut diagnostics: Vec<String> = Vec::new();
+
+    if let Ok(signal_result) = crate::signal::run_signals(cwd, config, "session-start") {
+        diagnostics.extend(signal_result.diagnostics);
+
+        if !signal_result.content.is_empty() {
+            print!("{}", signal_result.content);
 
             // Flow protocol injection (static behavioral rules) — after signals
             if config.flow.enabled && config.flow.protocol {
                 print!("\n{}", crate::hook::flow::protocol_block());
             }
 
+            // Diagnostics: always emitted, bypass suppression
+            if !diagnostics.is_empty() {
+                print!("\n{}", diagnostics.join("\n"));
+            }
+
             return Ok(());
         }
+    }
 
     // Fallback: ad-hoc queries from queries.toml (Phase 1 behavior)
     let trig_files = discover_trig_files(cwd);
 
     if trig_files.is_empty() {
+        // Emit diagnostics even when no graph files found
+        if !diagnostics.is_empty() {
+            print!("{}", diagnostics.join("\n"));
+        }
         return Ok(());
     }
 
@@ -91,6 +105,14 @@ pub fn handle(config: &BaseConfig, cwd: &Path) -> Result<()> {
             print!("\n");
         }
         print!("{}", crate::hook::flow::protocol_block());
+    }
+
+    // Diagnostics: always emitted at end of output
+    if !diagnostics.is_empty() {
+        if !output.is_empty() || (config.flow.enabled && config.flow.protocol) {
+            print!("\n");
+        }
+        print!("{}", diagnostics.join("\n"));
     }
 
     Ok(())

@@ -242,20 +242,33 @@ impl Default for SyncConfig {
 }
 
 impl BaseConfig {
-    /// Load config: workspace `.base/base.toml` → global `~/.base-gbl/base.toml` → compiled defaults.
+    /// Load config: global `~/.base-gbl/base.toml` as base, workspace `.base/base.toml` overlaid on top.
+    /// Workspace sections override global at the key level; missing sections inherit from global.
     pub fn load(cwd: &Path) -> Self {
         Self::try_load(cwd).unwrap_or_default()
     }
 
     fn try_load(cwd: &Path) -> Option<Self> {
-        let ws = cwd.join(".base").join("base.toml");
-        if let Ok(c) = Self::from_file(&ws) {
-            return Some(c);
-        }
-
         let home = dirs::home_dir()?;
-        let global = home.join(".base-gbl").join("base.toml");
-        Self::from_file(&global).ok()
+        let global_path = home.join(".base-gbl").join("base.toml");
+        let ws_path = cwd.join(".base").join("base.toml");
+
+        let global = Self::load_toml_table(&global_path);
+        let workspace = Self::load_toml_table(&ws_path);
+
+        let merged = match (global, workspace) {
+            (Some(g), Some(w)) => merge_toml_tables(g, w),
+            (Some(g), None) => g,
+            (None, Some(w)) => w,
+            (None, None) => return None,
+        };
+
+        toml::Value::Table(merged).try_into().ok()
+    }
+
+    fn load_toml_table(path: &Path) -> Option<toml::Table> {
+        let content = std::fs::read_to_string(path).ok()?;
+        content.parse::<toml::Table>().ok()
     }
 
     fn from_file(path: &Path) -> Result<Self> {
@@ -263,6 +276,23 @@ impl BaseConfig {
             std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
         toml::from_str(&content).with_context(|| format!("parsing {}", path.display()))
     }
+}
+
+/// Deep-merge two TOML tables. Overlay values win; nested tables merge recursively.
+/// Arrays and scalars in overlay replace base entirely.
+fn merge_toml_tables(base: toml::Table, overlay: toml::Table) -> toml::Table {
+    let mut merged = base;
+    for (key, overlay_val) in overlay {
+        match (merged.remove(&key), overlay_val) {
+            (Some(toml::Value::Table(b)), toml::Value::Table(o)) => {
+                merged.insert(key, toml::Value::Table(merge_toml_tables(b, o)));
+            }
+            (_, val) => {
+                merged.insert(key, val);
+            }
+        }
+    }
+    merged
 }
 
 // ─── Query Config (queries.toml) ─────────────────────────────

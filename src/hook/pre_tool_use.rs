@@ -76,9 +76,27 @@ pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Res
                         Some(store) => query_rules_from_graph(store, config, domain_def),
                         None => format_toml_rules(domain_def),
                     };
-                    if !rules_text.is_empty() {
-                        output.push_str(&rules_text);
-                        output.push('\n');
+
+                    // Query-triggered injection for filepath-matched domains
+                    let query_text = match (&graph_store, &domain_def.query) {
+                        (Some(store), Some(query_name)) => {
+                            let fmt = domain_def.query_format.as_deref().unwrap_or("list");
+                            crate::hook::user_prompt_submit::resolve_and_run_query(
+                                store, config, cwd, query_name, fmt, &domain_def.name,
+                            )
+                        }
+                        _ => String::new(),
+                    };
+
+                    if !rules_text.is_empty() || !query_text.is_empty() {
+                        if !rules_text.is_empty() {
+                            output.push_str(&rules_text);
+                            output.push('\n');
+                        }
+                        if !query_text.is_empty() {
+                            output.push_str(&query_text);
+                            output.push('\n');
+                        }
                         data.domains_matched.push(domain_def.name.clone());
                         data.rules_injected += rules_text.lines().filter(|l| l.starts_with("  ")).count();
                         session.mark_injected(&domain_def.name, rules_hash);

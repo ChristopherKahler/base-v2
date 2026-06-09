@@ -92,12 +92,12 @@ fn suppression_skips_unchanged_signals() {
     let config = test_config();
 
     // First run — should produce output
-    let output1 = signal::run_signals(tmp.path(), &config).unwrap();
-    assert!(!output1.is_empty(), "First run should produce output");
+    let output1 = signal::run_signals(tmp.path(), &config, "test").unwrap();
+    assert!(!output1.content.is_empty(), "First run should produce output");
 
     // Second run — nothing changed, should be suppressed
-    let output2 = signal::run_signals(tmp.path(), &config).unwrap();
-    assert!(output2.is_empty(), "Second run should be suppressed (no changes)");
+    let output2 = signal::run_signals(tmp.path(), &config, "test").unwrap();
+    assert!(output2.content.is_empty(), "Second run should be suppressed (no changes)");
 }
 
 #[test]
@@ -108,14 +108,14 @@ fn suppression_re_emits_on_change() {
     let config = test_config();
 
     // First run
-    signal::run_signals(tmp.path(), &config).unwrap();
+    signal::run_signals(tmp.path(), &config, "test").unwrap();
 
     // Change data — add a new project
     crud::project::add(tmp.path(), &ns(), "New Project", "active", None).unwrap();
 
     // Third run — data changed, should re-emit
-    let output3 = signal::run_signals(tmp.path(), &config).unwrap();
-    assert!(!output3.is_empty(), "Should re-emit after data change");
+    let output3 = signal::run_signals(tmp.path(), &config, "test").unwrap();
+    assert!(!output3.content.is_empty(), "Should re-emit after data change");
 }
 
 #[test]
@@ -126,10 +126,10 @@ fn budget_cap_truncates() {
     let mut config = test_config();
     config.signal.max_chars = 50; // Very small budget
 
-    let output = signal::run_signals(tmp.path(), &config).unwrap();
+    let output = signal::run_signals(tmp.path(), &config, "test").unwrap();
     // Active-awareness (priority 1) should always appear regardless of budget
     // Lower-priority signals may be dropped
-    assert!(!output.is_empty(), "Priority 1 signal should always emit");
+    assert!(!output.content.is_empty(), "Priority 1 signal should always emit");
 }
 
 #[test]
@@ -140,6 +140,7 @@ fn disabled_signals_emit_nothing() {
     let mut config = test_config();
     config.signal.enabled = false;
 
-    let output = signal::run_signals(tmp.path(), &config).unwrap();
-    assert!(output.is_empty(), "Disabled signals should emit nothing");
+    let output = signal::run_signals(tmp.path(), &config, "test").unwrap();
+    assert!(output.content.is_empty(), "Disabled signals should emit nothing");
+    assert!(output.diagnostics.is_empty(), "Disabled signals should emit no diagnostics");
 }

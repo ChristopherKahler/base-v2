@@ -80,6 +80,8 @@ fn devmode_block_format_includes_domains() {
             exclude: vec![],
             sticky: false,
             rules: vec!["Rule 1".into(), "Rule 2".into()],
+            query: None,
+            query_format: None,
         },
         base::domain::DomainDef {
             name: "DEVELOPMENT".into(),
@@ -90,6 +92,8 @@ fn devmode_block_format_includes_domains() {
             exclude: vec![],
             sticky: false,
             rules: vec!["Dev rule".into()],
+            query: None,
+            query_format: None,
         },
         base::domain::DomainDef {
             name: "UNMATCHED".into(),
@@ -100,6 +104,8 @@ fn devmode_block_format_includes_domains() {
             exclude: vec![],
             sticky: false,
             rules: vec!["Unused".into()],
+            query: None,
+            query_format: None,
         },
     ];
 

@@ -17,38 +17,60 @@ struct SignalResult {
     output: String,
 }
 
-/// Run all signals with suppression and budget cap. Returns combined output.
-pub fn run_signals(cwd: &Path, config: &BaseConfig) -> Result<String> {
+/// Combined signal output: content (suppression-checked) + diagnostics (always emitted).
+pub struct SignalOutput {
+    pub content: String,
+    /// No-match tags: `<hook-query:no-match>` for each query that ran but found nothing.
+    /// Always emitted — bypass suppression so operator can verify queries executed.
+    pub diagnostics: Vec<String>,
+}
+
+/// Run all signals with suppression and budget cap. Returns content + diagnostics.
+pub fn run_signals(cwd: &Path, config: &BaseConfig, hook: &str) -> Result<SignalOutput> {
     if !config.signal.enabled {
-        return Ok(String::new());
+        return Ok(SignalOutput { content: String::new(), diagnostics: vec![] });
     }
 
     let ns = &config.namespace;
     let sig = &config.signal;
     let base_dir = crate::config::find_workspace_base(cwd);
 
-    // Collect signal outputs
     let mut results: Vec<SignalResult> = Vec::new();
+    let mut diagnostics: Vec<String> = Vec::new();
 
-    if let Ok(output) = active_awareness::run(cwd, ns, sig)
-        && !output.is_empty() {
+    match active_awareness::run(cwd, ns, sig) {
+        Ok(output) if !output.is_empty() => {
             results.push(SignalResult { name: "active-awareness".into(), priority: 1, output });
         }
-    if let Ok(output) = pulse::run(cwd, ns, sig)
-        && !output.is_empty() {
+        Ok(_) => diagnostics.push(format!("<{hook}-active-awareness:no-match>")),
+        Err(_) => {}
+    }
+    match pulse::run(cwd, ns, sig) {
+        Ok(output) if !output.is_empty() => {
             results.push(SignalResult { name: "pulse".into(), priority: 2, output });
         }
-    if let Ok(output) = staleness::run(cwd, ns, sig)
-        && !output.is_empty() {
+        Ok(_) => diagnostics.push(format!("<{hook}-pulse:no-match>")),
+        Err(_) => {}
+    }
+    match staleness::run(cwd, ns, sig) {
+        Ok(output) if !output.is_empty() => {
             results.push(SignalResult { name: "staleness".into(), priority: 3, output });
         }
+        Ok(_) => diagnostics.push(format!("<{hook}-staleness:no-match>")),
+        Err(_) => {}
+    }
 
     // Flow resurface signal (gated by [flow] config)
     if config.flow.enabled && config.flow.resurface {
-        if let Ok(output) = flow_resurface::run(cwd, ns, &config.flow)
-            && !output.is_empty() {
-                results.push(SignalResult { name: "flow-resurface".into(), priority: 2, output });
+        match flow_resurface::run(cwd, ns, &config.flow, hook) {
+            Ok((output, flow_diags)) => {
+                if !output.is_empty() {
+                    results.push(SignalResult { name: "flow-resurface".into(), priority: 2, output });
+                }
+                diagnostics.extend(flow_diags);
             }
+            Err(_) => {}
+        }
     }
 
     // Sort by priority
@@ -69,7 +91,7 @@ pub fn run_signals(cwd: &Path, config: &BaseConfig) -> Result<String> {
         .collect();
 
     if novel.is_empty() {
-        return Ok(String::new());
+        return Ok(SignalOutput { content: String::new(), diagnostics });
     }
 
     // Apply budget cap
@@ -100,5 +122,8 @@ pub fn run_signals(cwd: &Path, config: &BaseConfig) -> Result<String> {
         let _ = state.save(base_dir);
     }
 
-    Ok(combined.trim_end().to_string())
+    Ok(SignalOutput {
+        content: combined.trim_end().to_string(),
+        diagnostics,
+    })
 }

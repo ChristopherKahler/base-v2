@@ -131,6 +131,15 @@ pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Res
             String::new()
         };
 
+        // Query-triggered injection: if domain has a `query` field, run the external SPARQL file
+        let query_text = match (&graph_store, &domain_def.query) {
+            (Some(store), Some(query_name)) => {
+                let fmt = domain_def.query_format.as_deref().unwrap_or("list");
+                resolve_and_run_query(store, config, cwd, query_name, fmt, &domain_def.name)
+            }
+            _ => String::new(),
+        };
+
         // Build combined output for this domain
         let mut domain_output = String::new();
         if !rules_text.is_empty() {
@@ -147,6 +156,12 @@ pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Res
                 domain_output.push('\n');
             }
             domain_output.push_str(&notes_text);
+        }
+        if !query_text.is_empty() {
+            if !domain_output.is_empty() {
+                domain_output.push('\n');
+            }
+            domain_output.push_str(&query_text);
         }
 
         // Dedup: hash combined output (rules + neighborhood), skip if unchanged
@@ -426,6 +441,121 @@ fn query_domain_from_graph(
     };
 
     (rules_text, neighborhood_text)
+}
+
+// ─── Query-triggered injection ─────────────────────────────
+
+/// Resolve a query name to a `.sparql` file, read it, run it, format results.
+/// Resolution: workspace `.base/queries/{name}.sparql` → global `~/.base-gbl/queries/{name}.sparql`.
+pub fn resolve_and_run_query(
+    store: &oxigraph::store::Store,
+    config: &BaseConfig,
+    cwd: &Path,
+    query_name: &str,
+    format: &str,
+    domain_name: &str,
+) -> String {
+    let filename = format!("{query_name}.sparql");
+
+    // Tier 1: workspace
+    let sparql_content = crate::config::find_workspace_base(cwd)
+        .and_then(|base| std::fs::read_to_string(base.join("queries").join(&filename)).ok())
+        // Tier 2: global
+        .or_else(|| {
+            dirs::home_dir().and_then(|home| {
+                std::fs::read_to_string(home.join(".base-gbl").join("queries").join(&filename)).ok()
+            })
+        });
+
+    let sparql_raw = match sparql_content {
+        Some(s) => s,
+        None => {
+            eprintln!("base: query file not found: queries/{filename}");
+            return String::new();
+        }
+    };
+
+    // Prefix substitution (same pattern as queries.toml)
+    let p = &config.namespace.prefix;
+    let u = &config.namespace.uri;
+    let sparql = sparql_raw
+        .replace("{{prefix}}", p)
+        .replace("{{uri}}", u);
+
+    match crate::store::query(store, &sparql) {
+        Ok(oxigraph::sparql::QueryResults::Solutions(solutions)) => {
+            let rows: Vec<_> = solutions.filter_map(|r| r.ok()).collect();
+            if rows.is_empty() {
+                return String::new();
+            }
+
+            let mut out = format!("<base-query name=\"{query_name}\" domain=\"{domain_name}\">\n");
+
+            let known_vars = ["label", "name", "text", "detail", "type", "status", "value", "count", "created"];
+
+            match format {
+                "table" => {
+                    if let Some(first) = rows.first() {
+                        let vars: Vec<&str> = known_vars.iter()
+                            .filter(|v| first.get(**v).is_some())
+                            .copied()
+                            .collect();
+
+                        if !vars.is_empty() {
+                            out.push_str(&format!("| {} |\n", vars.join(" | ")));
+                            out.push_str(&format!("|{}|\n", vars.iter().map(|_| "---").collect::<Vec<_>>().join("|")));
+                            for row in &rows {
+                                let vals: Vec<String> = vars.iter()
+                                    .map(|v| row.get(*v).map(|t| crud::term_display(t.into())).unwrap_or_default())
+                                    .collect();
+                                out.push_str(&format!("| {} |\n", vals.join(" | ")));
+                            }
+                        }
+                    }
+                }
+                "prose" => {
+                    for row in &rows {
+                        for var in &known_vars[..7] {
+                            if let Some(term) = row.get(*var) {
+                                let val = crud::term_display(term.into());
+                                if !val.is_empty() {
+                                    out.push_str(&format!("{var}: {val}\n"));
+                                }
+                            }
+                        }
+                        out.push('\n');
+                    }
+                }
+                _ => {
+                    // Default: "list"
+                    for row in &rows {
+                        let primary = row.get("label")
+                            .or_else(|| row.get("name"))
+                            .or_else(|| row.get("text"))
+                            .map(|t| crud::term_display(t.into()))
+                            .unwrap_or_default();
+                        let detail = row.get("detail")
+                            .or_else(|| row.get("value"))
+                            .map(|t| crud::term_display(t.into()));
+
+                        if let Some(d) = detail {
+                            out.push_str(&format!("- {primary}: {d}\n"));
+                        } else {
+                            out.push_str(&format!("- {primary}\n"));
+                        }
+                    }
+                }
+            }
+
+            out.push_str("</base-query>\n");
+            out
+        }
+        Ok(_) => String::new(),
+        Err(e) => {
+            eprintln!("base: query '{query_name}' failed: {e}");
+            String::new()
+        }
+    }
 }
 
 /// Format rules directly from the DomainDef struct (TOML fallback).

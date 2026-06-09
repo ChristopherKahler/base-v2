@@ -28,6 +28,12 @@ pub struct DomainDef {
     pub sticky: bool,
     #[serde(default)]
     pub rules: Vec<String>,
+    /// External SPARQL query file to run on match (e.g., "icp-context" resolves to queries/icp-context.sparql).
+    #[serde(default)]
+    pub query: Option<String>,
+    /// Format for query results: "table" | "list" | "prose". Defaults to "list".
+    #[serde(default)]
+    pub query_format: Option<String>,
 }
 
 fn default_mode() -> String {
@@ -122,6 +128,8 @@ pub fn add_trigger(
             exclude: Vec::new(),
             sticky: false,
             rules: Vec::new(),
+            query: None,
+            query_format: None,
         });
         file.domain.last_mut().unwrap()
     };

@@ -7,54 +7,53 @@ use crate::config::{FlowConfig, NamespaceConfig};
 use crate::crud;
 
 /// Flow resurface signal: surfaces items that need attention.
-/// Three sub-queries: blocked-by scan, stale detection, deferred orphan scan.
+/// Four sub-queries: blocked-by scan, stale detection, deferred orphan scan, mention threshold.
+/// Returns (content, diagnostics) — diagnostics are no-match tags for each sub-query.
 /// Priority 2 (competes with pulse for budget space).
-pub fn run(cwd: &Path, ns: &NamespaceConfig, flow: &FlowConfig) -> Result<String> {
+pub fn run(cwd: &Path, ns: &NamespaceConfig, flow: &FlowConfig, hook: &str) -> Result<(String, Vec<String>)> {
     let mut sections: Vec<String> = Vec::new();
+    let mut diagnostics: Vec<String> = Vec::new();
 
     // Sub-query 1: Blocked-by scan
-    // Find entities marked "blocked" whose blocker is now "completed" or "active"
-    if let Ok(output) = blocked_by_scan(cwd, ns) {
-        if !output.is_empty() {
-            sections.push(output);
-        }
+    match blocked_by_scan(cwd, ns) {
+        Ok(output) if !output.is_empty() => sections.push(output),
+        Ok(_) => diagnostics.push(format!("<{hook}-blocked-scan:no-match>")),
+        Err(_) => {}
     }
 
     // Sub-query 2: Stale active detection
-    // Find active entities with no activity beyond threshold
-    if let Ok(output) = stale_detection(cwd, ns, flow.stale_threshold_days) {
-        if !output.is_empty() {
-            sections.push(output);
-        }
+    match stale_detection(cwd, ns, flow.stale_threshold_days) {
+        Ok(output) if !output.is_empty() => sections.push(output),
+        Ok(_) => diagnostics.push(format!("<{hook}-stale-scan:no-match>")),
+        Err(_) => {}
     }
 
     // Sub-query 3: Deferred orphan scan
-    // Find deferred entities with expired resurface dates
-    if let Ok(output) = deferred_orphan_scan(cwd, ns) {
-        if !output.is_empty() {
-            sections.push(output);
-        }
+    match deferred_orphan_scan(cwd, ns) {
+        Ok(output) if !output.is_empty() => sections.push(output),
+        Ok(_) => diagnostics.push(format!("<{hook}-deferred-scan:no-match>")),
+        Err(_) => {}
     }
 
     // Sub-query 4: Mention threshold scan (gated by flow.mentions)
-    // Find notes mentioned >= threshold times — candidates for project promotion
     if flow.mentions {
-        if let Ok(output) = mention_threshold_scan(cwd, ns, flow.mention_threshold) {
-            if !output.is_empty() {
-                sections.push(output);
-            }
+        match mention_threshold_scan(cwd, ns, flow.mention_threshold) {
+            Ok(output) if !output.is_empty() => sections.push(output),
+            Ok(_) => diagnostics.push(format!("<{hook}-mentions-scan:no-match>")),
+            Err(_) => {}
         }
     }
 
-    if sections.is_empty() {
-        return Ok(String::new());
-    }
+    let content = if sections.is_empty() {
+        String::new()
+    } else {
+        let mut output = String::from("<flow-resurface>\n");
+        output.push_str(&sections.join("\n"));
+        output.push_str("\n</flow-resurface>");
+        output
+    };
 
-    let mut output = String::from("<flow-resurface>\n");
-    output.push_str(&sections.join("\n"));
-    output.push_str("\n</flow-resurface>");
-
-    Ok(output)
+    Ok((content, diagnostics))
 }
 
 /// Find entities with status "blocked" whose blocker entity has status "completed" or "active".
