@@ -139,12 +139,13 @@ fn sync_domain_list(
         }
     }
 
-    // Migrate decisions from carl.json if provided
-    let total_decisions = if let Some(carl_path) = carl_json_path {
+    // Migrate rules + decisions from carl.json if provided
+    let (carl_rules, total_decisions) = if let Some(carl_path) = carl_json_path {
         sync_carl_decisions(&store, ns, &graph, &pfx, carl_path)?
     } else {
-        0
+        (0, 0)
     };
+    total_rules += carl_rules;
 
     crate::store::write_back(&store, &trig_path)?;
 
@@ -155,20 +156,62 @@ fn sync_domain_list(
     })
 }
 
-// ─── Carl.json decision migration ───────────────────────────
+// ─── Carl.json migration (decisions + rules) ────────────────
 
-/// Minimal carl.json structure — only what we need for decision migration.
+/// carl.json structure. The REAL CARL format stores `domains` as a map of
+/// name → entry; an older fixture format used an array of named entries.
+/// Both are accepted (untagged).
 #[derive(Deserialize)]
 struct CarlJson {
     #[serde(default)]
-    domains: Vec<CarlDomain>,
+    domains: CarlDomains,
 }
 
 #[derive(Deserialize)]
-struct CarlDomain {
-    name: String,
+#[serde(untagged)]
+enum CarlDomains {
+    Map(std::collections::HashMap<String, CarlDomainEntry>),
+    List(Vec<CarlDomainNamed>),
+}
+
+impl Default for CarlDomains {
+    fn default() -> Self {
+        CarlDomains::List(Vec::new())
+    }
+}
+
+impl CarlDomains {
+    fn into_pairs(self) -> Vec<(String, CarlDomainEntry)> {
+        match self {
+            CarlDomains::Map(m) => m.into_iter().collect(),
+            CarlDomains::List(v) => v
+                .into_iter()
+                .map(|d| (d.name, CarlDomainEntry { rules: d.rules, decisions: d.decisions }))
+                .collect(),
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct CarlDomainEntry {
+    #[serde(default)]
+    rules: Vec<CarlRule>,
     #[serde(default)]
     decisions: Vec<CarlDecision>,
+}
+
+#[derive(Deserialize)]
+struct CarlDomainNamed {
+    name: String,
+    #[serde(default)]
+    rules: Vec<CarlRule>,
+    #[serde(default)]
+    decisions: Vec<CarlDecision>,
+}
+
+#[derive(Deserialize)]
+struct CarlRule {
+    text: String,
 }
 
 #[derive(Deserialize)]
@@ -177,7 +220,37 @@ struct CarlDecision {
     #[serde(default)]
     rationale: String,
     #[serde(default)]
-    recall: String,
+    recall: RecallField,
+    #[serde(default = "default_decision_status")]
+    status: String,
+}
+
+/// `recall` is a comma-joined string in old fixtures, an array of keywords
+/// in the real CARL format. Accept both.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum RecallField {
+    Text(String),
+    List(Vec<String>),
+}
+
+impl Default for RecallField {
+    fn default() -> Self {
+        RecallField::Text(String::new())
+    }
+}
+
+impl RecallField {
+    fn joined(&self) -> String {
+        match self {
+            RecallField::Text(s) => s.clone(),
+            RecallField::List(v) => v.join(", "),
+        }
+    }
+}
+
+fn default_decision_status() -> String {
+    "active".into()
 }
 
 fn sync_carl_decisions(
@@ -186,7 +259,7 @@ fn sync_carl_decisions(
     graph: &str,
     pfx: &str,
     carl_path: &Path,
-) -> Result<usize> {
+) -> Result<(usize, usize)> {
     let content = std::fs::read_to_string(carl_path)
         .with_context(|| format!("Failed to read carl.json at {}", carl_path.display()))?;
     let carl: CarlJson = serde_json::from_str(&content)
@@ -194,11 +267,47 @@ fn sync_carl_decisions(
 
     let p = &ns.prefix;
     let now = crud::now_iso();
-    let mut count = 0usize;
+    let mut rule_count = 0usize;
+    let mut decision_count = 0usize;
 
-    for domain in &carl.domains {
-        let domain_slug = crud::slugify(&domain.name);
+    for (domain_name, domain) in carl.domains.into_pairs() {
+        let domain_slug = crud::slugify(&domain_name);
         let domain_iri = crud::build_iri(ns, "domain", &domain_slug);
+
+        // ── Rules: import with the same semantics as `base rule add` —
+        // IRI rule/{slug}/cli-{n}, {p}:index + {p}:priority, NO source
+        // marker (domains.toml GC never touches them, rule remove works).
+        // Idempotent: skip rules whose exact text already exists for the domain.
+        let mut next_idx = carl_next_rule_index(store, pfx, p, &domain_iri);
+        for rule in &domain.rules {
+            let escaped_text = crud::escape_sparql_literal(&rule.text);
+            let exists = format!(
+                "{pfx}\n\
+                 ASK {{ GRAPH <{graph}> {{ <{domain_iri}> {p}:hasRule ?r . ?r {p}:ruleText \"{escaped_text}\" }} }}"
+            );
+            if let Ok(oxigraph::sparql::QueryResults::Boolean(true)) = store.query(&exists) {
+                continue;
+            }
+
+            let rule_iri = crud::build_iri(ns, "rule", &format!("{domain_slug}/cli-{next_idx}"));
+            let insert = format!(
+                "{pfx}\n\
+                 INSERT DATA {{\n\
+                   GRAPH <{graph}> {{\n\
+                     <{rule_iri}> rdf:type {p}:Rule ;\n\
+                       {p}:ruleText \"{escaped_text}\" ;\n\
+                       {p}:index \"{next_idx}\" ;\n\
+                       {p}:priority \"{next_idx}\" .\n\
+                     <{domain_iri}> {p}:hasRule <{rule_iri}> .\n\
+                   }}\n\
+                 }}"
+            );
+            store
+                .update(&insert)
+                .with_context(|| format!("Failed to import carl rule for domain '{domain_name}'"))?;
+            next_idx += 1;
+            rule_count += 1;
+        }
 
         for decision in &domain.decisions {
             let dec_slug = format!(
@@ -216,10 +325,11 @@ fn sync_carl_decisions(
             );
             let _ = store.update(&delete);
 
-            let recall_triple = if decision.recall.is_empty() {
+            let recall = decision.recall.joined();
+            let recall_triple = if recall.is_empty() {
                 String::new()
             } else {
-                format!("      {p}:recall \"{}\" ;\n", crud::escape_sparql_literal(&decision.recall))
+                format!("      {p}:recall \"{}\" ;\n", crud::escape_sparql_literal(&recall))
             };
 
             let insert = format!(
@@ -230,22 +340,47 @@ fn sync_carl_decisions(
                        {p}:name \"{}\" ;\n\
                        {p}:rationale \"{}\" ;\n\
                  {recall_triple}\
-                       {p}:status \"active\" ;\n\
+                       {p}:status \"{}\" ;\n\
                        {p}:createdAt \"{now}\"^^xsd:dateTime .\n\
                      <{domain_iri}> {p}:hasDecision <{dec_iri}> .\n\
                    }}\n\
                  }}",
                 crud::escape_sparql_literal(&decision.decision),
                 crud::escape_sparql_literal(&decision.rationale),
+                crud::escape_sparql_literal(&decision.status),
             );
             store
                 .update(&insert)
-                .with_context(|| format!("Failed to insert decision for domain '{}'", domain.name))?;
-            count += 1;
+                .with_context(|| format!("Failed to insert decision for domain '{domain_name}'"))?;
+            decision_count += 1;
         }
     }
 
-    Ok(count)
+    Ok((rule_count, decision_count))
+}
+
+/// MAX({p}:index)+1 over a domain's rules in the given store.
+/// Mirrors crud::rule::next_rule_index but works against an already-open store.
+fn carl_next_rule_index(store: &oxigraph::store::Store, pfx: &str, p: &str, domain_iri: &str) -> u32 {
+    let sparql = format!(
+        "{pfx}\n\
+         SELECT (MAX(?idx) AS ?max_idx) WHERE {{\n\
+           GRAPH ?g {{\n\
+             <{domain_iri}> {p}:hasRule ?rule .\n\
+             ?rule {p}:index ?idx .\n\
+           }}\n\
+         }}"
+    );
+    if let Ok(oxigraph::sparql::QueryResults::Solutions(solutions)) = store.query(&sparql)
+        && let Some(Ok(row)) = solutions.into_iter().next()
+        && let Some(term) = row.get("max_idx")
+    {
+        let max_str = crud::term_display(term.into());
+        if let Ok(max_val) = max_str.parse::<u32>() {
+            return max_val + 1;
+        }
+    }
+    0
 }
 
 // ─── Helpers ────────────────────────────────────────────────

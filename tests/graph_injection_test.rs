@@ -307,3 +307,74 @@ rules = ["Never lie", "New rule C"]
     assert!(!texts.iter().any(|t| t.contains("Always verify")), "stale synced rule GC'd: {texts:?}");
     assert_eq!(texts.len(), 3, "exactly 3 rules after double sync (idempotent): {texts:?}");
 }
+
+#[test]
+fn carl_migration_real_dict_format_imports_rules_and_decisions() {
+    let tmp = tempfile::tempdir().unwrap();
+    setup_synced_workspace(tmp.path());
+    let config = base::config::BaseConfig::load(tmp.path());
+    let ns = &config.namespace;
+
+    let carl_path = tmp.path().join("carl.json");
+    std::fs::write(
+        &carl_path,
+        r#"{
+  "version": "2.0",
+  "domains": {
+    "DEVELOPMENT": {
+      "state": "active",
+      "always_on": false,
+      "rules": [
+        {"id": 0, "text": "Carl rule one", "added": "2026-03-23", "source": "manual"},
+        {"id": 1, "text": "Carl rule \"quoted\" two", "added": "2026-03-23"}
+      ],
+      "decisions": [
+        {"id": 0, "decision": "Use Rust", "rationale": "Fast", "recall": "arch", "status": "active"},
+        {"id": 1, "decision": "Old idea", "rationale": "Superseded", "status": "archived"}
+      ]
+    }
+  }
+}"#,
+    )
+    .unwrap();
+
+    base::domain::sync::sync_domains_to_graph(&config, tmp.path(), Some(&carl_path)).unwrap();
+    // Re-run — idempotent for rules (dedup by text), decisions delete+reinsert
+    base::domain::sync::sync_domains_to_graph(&config, tmp.path(), Some(&carl_path)).unwrap();
+
+    let base_dir = tmp.path().join(".base");
+    let store = base::store::load_graph(&base_dir.join("graph.nq")).unwrap();
+    let p = &ns.prefix;
+    let u = &ns.uri;
+
+    let rules_q = format!(
+        "PREFIX {p}: <{u}>\nSELECT ?text WHERE {{ GRAPH ?g {{ <{u}domain/development> {p}:hasRule ?r . ?r {p}:ruleText ?text . ?r {p}:index ?i . }} }}"
+    );
+    let rule_texts: Vec<String> = match store.query(&rules_q).unwrap() {
+        oxigraph::sparql::QueryResults::Solutions(sols) => sols
+            .filter_map(|r| r.ok())
+            .filter_map(|row| row.get("text").map(|t| t.to_string()))
+            .collect(),
+        _ => panic!("Expected solutions"),
+    };
+    assert_eq!(rule_texts.len(), 2, "2 carl rules imported once (idempotent): {rule_texts:?}");
+    assert!(rule_texts.iter().any(|t| t.contains("quoted")), "escaped rule imported: {rule_texts:?}");
+
+    let dec_q = format!(
+        "PREFIX {p}: <{u}>\nSELECT ?name ?status WHERE {{ GRAPH ?g {{ ?d a {p}:Decision ; {p}:name ?name ; {p}:status ?status . }} }}"
+    );
+    let decs: Vec<(String, String)> = match store.query(&dec_q).unwrap() {
+        oxigraph::sparql::QueryResults::Solutions(sols) => sols
+            .filter_map(|r| r.ok())
+            .filter_map(|row| {
+                Some((row.get("name")?.to_string(), row.get("status")?.to_string()))
+            })
+            .collect(),
+        _ => panic!("Expected solutions"),
+    };
+    assert!(decs.iter().any(|(n, s)| n.contains("Use Rust") && s.contains("active")));
+    assert!(
+        decs.iter().any(|(n, s)| n.contains("Old idea") && s.contains("archived")),
+        "import-all: archived decision imported with its status: {decs:?}"
+    );
+}

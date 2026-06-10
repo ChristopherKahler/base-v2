@@ -337,20 +337,21 @@ All hooks fail open. If anything errors, it logs to stderr and exits with empty 
 
 ```
 ~/.base-gbl/                  # global tier (all workspaces)
+├── .base/graph.nq            # global tier graph
 ├── domains.toml              # global domain triggers
 ├── operator.toml             # your identity profile
 ├── base.toml                 # global config
 └── docs/                     # reference docs
 
 ~/my-workspace/.base/         # workspace tier (one per workspace)
-├── graph.trig                # the knowledge graph
+├── graph.nq                  # the knowledge graph (NQuads)
 ├── domains.toml              # workspace domain triggers
 ├── ast.ttl                   # raw AST extraction output
 ├── base.toml                 # workspace config
 └── .session                  # ephemeral (dedup tracking, prompt count)
 ```
 
-Global domains.toml loads first, workspace overlays by name. The graph is workspace-only, no global graph.
+Global domains.toml loads first, workspace overlays by name. Hooks load the global and workspace graphs into one merged store, so queries span both tiers.
 
 ## Domain matching
 
@@ -364,6 +365,8 @@ prompt_keywords = ["api", "endpoint", "database", "query"]
 file_keywords = ["use crate", "impl", "async fn"]
 paths = ["src/api/", "src/db/"]
 rules = ["Always validate inputs at API boundaries"]
+query = "backend-context"        # optional: fire .base/queries/backend-context.sparql on match
+query_format = "list"            # table | list | prose
 
 [[domain]]
 name = "FRONTEND"
@@ -445,7 +448,7 @@ Every panel reads from the same SPARQL-backed API. The same graph that powers yo
 | Language | Rust (single binary, ~20MB — includes embedded dashboard SPA) |
 | Graph | Oxigraph (embedded, in-memory, loaded from disk per invocation) |
 | Query | SPARQL SELECT and UPDATE |
-| Persistence | TriG text files (git-native, atomic write-back via temp+rename) |
+| Persistence | NQuads text files (git-native, atomic write-back via temp+rename, validated before commit) |
 | Config | TOML (domains.toml, base.toml) |
 | AST extraction | Tree-sitter (Python scripts, 35+ languages) |
 | Hooks | Claude Code settings.json (stdin/stdout JSON) |
