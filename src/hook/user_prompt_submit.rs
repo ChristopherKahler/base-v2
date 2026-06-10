@@ -143,13 +143,15 @@ pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Res
             domain_output.push_str(&query_text);
         }
 
-        // Dedup: hash combined output (rules + neighborhood), skip if unchanged
-        let combined_hash = rules_hash(
-            &domain_output
-                .lines()
-                .map(String::from)
-                .collect::<Vec<_>>(),
-        );
+        // Dedup: hash combined output (rules + neighborhood), skip if unchanged.
+        // Hash over SORTED lines — SPARQL result order shifts when the graph
+        // file is rewritten (post-tool-use fires on every edit), and an
+        // order-sensitive hash would re-inject unchanged content every prompt.
+        let combined_hash = {
+            let mut lines: Vec<String> = domain_output.lines().map(String::from).collect();
+            lines.sort();
+            rules_hash(&lines)
+        };
         // Count actual injected rules (from graph, not TOML)
         let injected_rule_count = rules_text.lines().filter(|l| l.starts_with("  ")).count();
 
@@ -384,7 +386,8 @@ fn query_domain_from_graph(
                BIND({p}:Project AS ?type)\n\
              }}\n\
            }}\n\
-         }}"
+         }}\n\
+         ORDER BY ?type ?name"
     );
 
     let neighborhood_text = match crate::store::query(store, &neighborhood_sparql) {
