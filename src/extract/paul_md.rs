@@ -453,11 +453,7 @@ fn first_paragraph(content: &str) -> String {
 
 /// Escape special characters for SPARQL string literals.
 fn escape(s: &str) -> String {
-    s.replace('\\', "\\\\")
-        .replace('"', "\\\"")
-        .replace('\r', "")
-        .replace('\n', "\\n")
-        .replace('\t', "\\t")
+    crate::crud::escape_sparql_literal(s)
 }
 
 #[cfg(test)]

@@ -13,6 +13,8 @@ pub fn add(cwd: &Path, ns: &NamespaceConfig, name: &str, due_date: &str) -> Resu
     let graph = crud::workspace_graph_iri(ns, &ws_slug);
     let now = crud::now_iso();
     let p = &ns.prefix;
+    let name = crud::escape_sparql_literal(name);
+    let due_date = crud::escape_sparql_literal(due_date);
 
     let sparql = format!(
         "INSERT DATA {{\n\

@@ -55,7 +55,7 @@ pub fn log(
 
 pub fn search(cwd: &Path, ns: &NamespaceConfig, keyword: &str) -> Result<()> {
     let p = &ns.prefix;
-    let kw_lower = keyword.to_lowercase();
+    let kw_lower = crud::escape_sparql_literal(&keyword.to_lowercase());
     let sparql = format!(
         "SELECT ?name ?rationale ?recall WHERE {{\n\
            GRAPH ?g {{\n\

@@ -11,7 +11,7 @@ use crate::crud;
 pub fn contains(cwd: &Path, ns: &NamespaceConfig, name: &str) -> Result<()> {
     let store = load_ast_store(cwd)?;
     let pfx = ast_prefixes(ns);
-    let name_lower = name.to_lowercase();
+    let name_lower = crud::escape_sparql_literal(&name.to_lowercase());
 
     // Find entities whose label contains the search term
     let sparql = format!(
@@ -94,7 +94,7 @@ pub fn file(cwd: &Path, ns: &NamespaceConfig, file_path: &str) -> Result<()> {
            FILTER(CONTAINS(LCASE(STR(?file)), \"{}\"))\n\
          }}\n\
          ORDER BY ?line",
-        file_lower.to_lowercase()
+        crud::escape_sparql_literal(&file_lower.to_lowercase())
     );
 
     let results = crate::store::query(&store, &sparql)?;
@@ -146,7 +146,7 @@ pub fn file(cwd: &Path, ns: &NamespaceConfig, file_path: &str) -> Result<()> {
 pub fn calls(cwd: &Path, ns: &NamespaceConfig, name: &str) -> Result<()> {
     let store = load_ast_store(cwd)?;
     let pfx = ast_prefixes(ns);
-    let name_lower = name.to_lowercase();
+    let name_lower = crud::escape_sparql_literal(&name.to_lowercase());
 
     // Find the entity — labels may have () suffix, so use CONTAINS
     let find = format!(
@@ -212,8 +212,11 @@ pub fn imports(cwd: &Path, ns: &NamespaceConfig, file_path: &str) -> Result<()> 
         .trim_start_matches("./")
         .to_lowercase();
     // Strip extension for IRI matching (imports often reference modules, not files)
-    let stem = file_lower.trim_end_matches(".rs").trim_end_matches(".py")
-        .trim_end_matches(".js").trim_end_matches(".ts");
+    let stem = crud::escape_sparql_literal(
+        file_lower.trim_end_matches(".rs").trim_end_matches(".py")
+            .trim_end_matches(".js").trim_end_matches(".ts")
+    );
+    let file_lower = crud::escape_sparql_literal(&file_lower);
 
     // Match by target IRI containing the stem OR target label containing the filename
     let sparql = format!(
@@ -503,7 +506,7 @@ fn query_file_imports(store: &oxigraph::store::Store, ns: &NamespaceConfig, file
 
 fn query_file_importers(store: &oxigraph::store::Store, ns: &NamespaceConfig, file_lower: &str) -> Vec<String> {
     let pfx = ast_prefixes(ns);
-    let filename = file_lower.rsplit('/').next().unwrap_or(file_lower);
+    let filename = crud::escape_sparql_literal(file_lower.rsplit('/').next().unwrap_or(file_lower));
     let sparql = format!(
         "{pfx}\n\
          SELECT DISTINCT ?importer_file WHERE {{\n\

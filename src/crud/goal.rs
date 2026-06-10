@@ -13,6 +13,8 @@ pub fn add(cwd: &Path, ns: &NamespaceConfig, name: &str, target: &str) -> Result
     let graph = crud::workspace_graph_iri(ns, &ws_slug);
     let now = crud::now_iso();
     let p = &ns.prefix;
+    let name = crud::escape_sparql_literal(name);
+    let target = crud::escape_sparql_literal(target);
 
     let sparql = format!(
         "INSERT DATA {{\n\
@@ -88,9 +90,11 @@ pub fn update(
     let mut updates = Vec::new();
 
     if let Some(s) = status {
+        let s = crud::escape_sparql_literal(s);
         updates.push(crud::field_update(&graph, &iri, &format!("{p}:status"), &format!("\"{s}\"")));
     }
     if let Some(t) = target {
+        let t = crud::escape_sparql_literal(t);
         updates.push(crud::field_update(&graph, &iri, &format!("{p}:description"), &format!("\"{t}\"")));
     }
 

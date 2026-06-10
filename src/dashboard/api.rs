@@ -211,7 +211,7 @@ pub async fn search(
     let ns = &state.config.namespace;
     let p = &ns.prefix;
     let pfx = crate::crud::prefixes(ns);
-    let q_lower = q.to_lowercase();
+    let q_lower = crate::crud::escape_sparql_literal(&q.to_lowercase());
     let store = state.store.lock().unwrap();
 
     // Search by name, description, or note text

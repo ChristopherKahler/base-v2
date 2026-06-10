@@ -69,7 +69,7 @@ pub fn recall_to_string(
 
     let sparql = match (keyword, domain) {
         (Some(kw), Some(dom)) => {
-            let kw_lower = kw.to_lowercase();
+            let kw_lower = crud::escape_sparql_literal(&kw.to_lowercase());
             let domain_iri = crud::build_iri(ns, "domain", &crud::slugify(dom));
             format!(
                 "SELECT ?text ?type ?created WHERE {{\n\
@@ -87,7 +87,7 @@ pub fn recall_to_string(
             )
         }
         (Some(kw), None) => {
-            let kw_lower = kw.to_lowercase();
+            let kw_lower = crud::escape_sparql_literal(&kw.to_lowercase());
             format!(
                 "SELECT ?text ?type ?created ?extra WHERE {{\n\
                    {{\n\
@@ -98,7 +98,7 @@ pub fn recall_to_string(
                      }}\n\
                    }} UNION {{\n\
                      GRAPH ?g {{\n\
-                       ?n a {p}:Decision ; {p}:description ?text .\n\
+                       ?n a {p}:Decision ; {p}:name ?text .\n\
                        BIND(\"decision\" AS ?type)\n\
                        OPTIONAL {{ ?n {p}:rationale ?extra }}\n\
                        OPTIONAL {{ ?n {p}:fromPlan ?created }}\n\
@@ -108,7 +108,7 @@ pub fn recall_to_string(
                      GRAPH ?g {{\n\
                        ?n a {p}:Decision ; {p}:rationale ?text .\n\
                        BIND(\"decision\" AS ?type)\n\
-                       OPTIONAL {{ ?n {p}:description ?extra }}\n\
+                       OPTIONAL {{ ?n {p}:name ?extra }}\n\
                        OPTIONAL {{ ?n {p}:fromPlan ?created }}\n\
                        FILTER(CONTAINS(LCASE(STR(?text)), \"{kw_lower}\"))\n\
                      }}\n\

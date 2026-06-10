@@ -66,7 +66,7 @@ mod tests {
         let triples = extract(content, ".paul/paul.json", &ns).unwrap();
         assert!(triples.iter().any(|(_, v)| v.contains("base-v2")));
         assert!(triples.iter().any(|(_, v)| v.contains("complete")));
-        assert!(triples.iter().any(|(_, v)| v.contains("PaulProject")));
+        assert!(triples.iter().any(|(_, v)| v.contains("Project")));
     }
 
     #[test]

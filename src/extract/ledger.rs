@@ -73,7 +73,7 @@ pub fn extract_ledger(
         body.push_str(&format!("    <{iri}> rdf:type {p}:LedgerEntry .\n"));
         body.push_str(&format!(
             "    <{iri}> {p}:action \"{}\" .\n",
-            entry.action
+            crud::escape_sparql_literal(&entry.action)
         ));
         body.push_str(&format!(
             "    <{iri}> {p}:timestamp \"{}\" .\n",
@@ -81,16 +81,16 @@ pub fn extract_ledger(
         ));
 
         if let Some(phase) = entry.phase {
-            body.push_str(&format!("    <{iri}> {p}:phase \"{phase}\" .\n"));
+            body.push_str(&format!("    <{iri}> {p}:phase \"{}\" .\n", crud::escape_sparql_literal(&phase.to_string())));
         }
         if let Some(ref plan) = entry.plan {
-            body.push_str(&format!("    <{iri}> {p}:plan \"{plan}\" .\n"));
+            body.push_str(&format!("    <{iri}> {p}:plan \"{}\" .\n", crud::escape_sparql_literal(plan)));
         }
         if let Some(ref note) = entry.note {
             if !note.is_empty() {
                 body.push_str(&format!(
                     "    <{iri}> {p}:note \"{}\" .\n",
-                    note.replace('"', "\\\"").replace('\n', "\\n")
+                    crud::escape_sparql_literal(note)
                 ));
             }
         }

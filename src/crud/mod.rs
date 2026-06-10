@@ -47,11 +47,13 @@ pub fn workspace_slug(cwd: &Path) -> String {
 }
 
 /// Escape a string for safe interpolation into a SPARQL literal.
-/// Handles backslashes, double quotes, and newlines.
+/// Handles backslashes, double quotes, carriage returns, newlines, and tabs.
 pub fn escape_sparql_literal(s: &str) -> String {
     s.replace('\\', "\\\\")
         .replace('"', "\\\"")
+        .replace('\r', "")
         .replace('\n', "\\n")
+        .replace('\t', "\\t")
 }
 
 /// Convert a name to a URL-safe slug: lowercase, non-alphanumeric→hyphens, deduped.

@@ -367,11 +367,7 @@ fn is_local_path(path: &str) -> bool {
 
 /// Escape special characters for SPARQL string literals.
 fn escape(s: &str) -> String {
-    s.replace('\\', "\\\\")
-        .replace('"', "\\\"")
-        .replace('\r', "")
-        .replace('\n', "\\n")
-        .replace('\t', "\\t")
+    crate::crud::escape_sparql_literal(s)
 }
 
 #[cfg(test)]

@@ -123,12 +123,14 @@ pub fn remove(cwd: &Path, ns: &NamespaceConfig, domain_name: &str, index: u32) -
 }
 
 /// Find the next available rule index for a domain.
+/// Uses MAX(index) + 1 to avoid collisions after deletions.
 fn next_rule_index(cwd: &Path, ns: &NamespaceConfig, domain_iri: &str) -> Result<u32> {
     let p = &ns.prefix;
     let sparql = format!(
-        "SELECT (COUNT(?rule) AS ?cnt) WHERE {{\n\
+        "SELECT (MAX(?idx) AS ?max_idx) WHERE {{\n\
            GRAPH ?g {{\n\
              <{domain_iri}> {p}:hasRule ?rule .\n\
+             ?rule {p}:index ?idx .\n\
            }}\n\
          }}"
     );
@@ -136,10 +138,12 @@ fn next_rule_index(cwd: &Path, ns: &NamespaceConfig, domain_iri: &str) -> Result
     let results = crud::load_and_query(cwd, ns, &sparql)?;
     if let QueryResults::Solutions(solutions) = results
         && let Some(Ok(row)) = solutions.into_iter().next()
-        && let Some(term) = row.get("cnt")
+        && let Some(term) = row.get("max_idx")
     {
-        let cnt_str = crud::term_display(term.into());
-        return cnt_str.parse::<u32>().context("parsing rule count");
+        let max_str = crud::term_display(term.into());
+        if let Ok(max_val) = max_str.parse::<u32>() {
+            return Ok(max_val + 1);
+        }
     }
     Ok(0)
 }

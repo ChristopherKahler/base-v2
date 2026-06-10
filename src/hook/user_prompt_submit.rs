@@ -112,27 +112,9 @@ pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Res
             continue;
         }
 
-        // Query notes linked to this domain (skip in lean mode)
-        let notes_text = if lean_mode {
-            String::new()
-        } else if let Some(ref store) = graph_store {
-            let domain_slug = crud::slugify(&domain_def.name);
-            let domain_iri = crud::build_iri(&config.namespace, "domain", &domain_slug);
-            let notes = crate::crud::note::notes_for_domain(store, &config.namespace, &domain_iri);
-            if notes.is_empty() {
-                String::new()
-            } else {
-                let mut out = format!("[{} NOTES]\n", domain_def.name);
-                for (note_type, text) in &notes {
-                    out.push_str(&format!("  - {note_type}: {text}\n"));
-                }
-                out
-            }
-        } else {
-            String::new()
-        };
-
-        // Query-triggered injection: if domain has a `query` field, run the external SPARQL file
+        // Notes surface ONLY through explicit queries — no bulk dumps.
+        // If a domain needs notes injected, configure `query = "..."` in domains.toml
+        // pointing to a SPARQL file in queries/ that filters and shapes the output.
         let query_text = match (&graph_store, &domain_def.query) {
             (Some(store), Some(query_name)) => {
                 let fmt = domain_def.query_format.as_deref().unwrap_or("list");
@@ -151,12 +133,6 @@ pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Res
                 domain_output.push('\n');
             }
             domain_output.push_str(&neighborhood_text);
-        }
-        if !notes_text.is_empty() {
-            if !domain_output.is_empty() {
-                domain_output.push('\n');
-            }
-            domain_output.push_str(&notes_text);
         }
         if !query_text.is_empty() {
             if !domain_output.is_empty() {
@@ -250,7 +226,11 @@ pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Res
 
     // Capture first 120 chars of the prompt for dashboard display
     let prompt_preview = if prompt.len() > 120 {
-        Some(format!("{}…", &prompt[..117]))
+        let truncated: String = prompt.char_indices()
+            .take_while(|(i, _)| *i < 117)
+            .map(|(_, c)| c)
+            .collect();
+        Some(format!("{truncated}…"))
     } else {
         Some(prompt.clone())
     };
