@@ -45,70 +45,68 @@ pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Res
     // ─── Domain rule injection (file path match) ─────────────
     let file_paths = extract_file_paths(event);
     if !file_paths.is_empty() {
+        // Single SessionState lifecycle for the whole branch — domain dedup
+        // marks and AST-injected marks share one instance, saved once (Q3).
+        let base_dir = crate::config::find_workspace_base(cwd);
+        let mut session = base_dir
+            .as_deref()
+            .map(SessionState::load)
+            .unwrap_or_default();
+        let mut session_dirty = false;
+
         let domains = domain::load_domains(cwd);
-        if !domains.is_empty() {
-            let base_dir = crate::config::find_workspace_base(cwd);
-            let mut session = base_dir
-                .as_deref()
-                .map(SessionState::load)
-                .unwrap_or_default();
+        let file_path_strings: Vec<String> = file_paths
+            .iter()
+            .filter_map(|p| p.to_str().map(String::from))
+            .collect();
+        let matched = match_by_file(&domains, &file_path_strings);
 
-            let file_path_strings: Vec<String> = file_paths
-                .iter()
-                .filter_map(|p| p.to_str().map(String::from))
-                .collect();
+        // Sync BEFORE the single graph load so the store sees fresh rules.
+        if !matched.is_empty() {
+            crate::hook::user_prompt_submit::ensure_domain_sync_pub(config, cwd);
+        }
 
-            let matched = match_by_file(&domains, &file_path_strings, &session);
-            if !matched.is_empty() {
-                crate::hook::user_prompt_submit::ensure_domain_sync_pub(config, cwd);
-                let graph_store = load_merged_graph(cwd);
-                let mut session_dirty = false;
+        // Single graph load per invocation — domain injection and PAUL
+        // context both read from this store (Q2).
+        let graph_store = crate::store::load_merged(cwd);
 
-                for domain_def in &matched {
-                    // Session dedup: skip if this domain's rules were already injected
-                    let rules_hash = domain::session::rules_hash(&domain_def.rules);
-                    if session.is_injected(&domain_def.name, rules_hash) {
-                        data.suppressed += 1;
-                        continue;
-                    }
+        for domain_def in &matched {
+            // Session dedup: skip if this domain's rules were already injected
+            let rules_hash = domain::session::rules_hash(&domain_def.rules);
+            if session.is_injected(&domain_def.name, rules_hash) {
+                data.suppressed += 1;
+                continue;
+            }
 
-                    let rules_text = match &graph_store {
-                        Some(store) => query_rules_from_graph(store, config, domain_def),
-                        None => format_toml_rules(domain_def),
-                    };
+            let rules_text = match &graph_store {
+                Some(store) => query_rules_from_graph(store, config, domain_def),
+                None => format_toml_rules(domain_def),
+            };
 
-                    // Query-triggered injection for filepath-matched domains
-                    let query_text = match (&graph_store, &domain_def.query) {
-                        (Some(store), Some(query_name)) => {
-                            let fmt = domain_def.query_format.as_deref().unwrap_or("list");
-                            crate::hook::user_prompt_submit::resolve_and_run_query(
-                                store, config, cwd, query_name, fmt, &domain_def.name,
-                            )
-                        }
-                        _ => String::new(),
-                    };
-
-                    if !rules_text.is_empty() || !query_text.is_empty() {
-                        if !rules_text.is_empty() {
-                            output.push_str(&rules_text);
-                            output.push('\n');
-                        }
-                        if !query_text.is_empty() {
-                            output.push_str(&query_text);
-                            output.push('\n');
-                        }
-                        data.domains_matched.push(domain_def.name.clone());
-                        data.rules_injected += rules_text.lines().filter(|l| l.starts_with("  ")).count();
-                        session.mark_injected(&domain_def.name, rules_hash);
-                        session_dirty = true;
-                    }
+            // Query-triggered injection for filepath-matched domains
+            let query_text = match (&graph_store, &domain_def.query) {
+                (Some(store), Some(query_name)) => {
+                    let fmt = domain_def.query_format.as_deref().unwrap_or("list");
+                    crate::hook::user_prompt_submit::resolve_and_run_query(
+                        store, config, cwd, query_name, fmt, &domain_def.name,
+                    )
                 }
+                _ => String::new(),
+            };
 
-                if session_dirty {
-                    if let Some(bd) = base_dir.as_deref() {
-                        let _ = session.save(bd);
-                    }
+            if !rules_text.is_empty() || !query_text.is_empty() {
+                if !rules_text.is_empty() {
+                    output.push_str(&rules_text);
+                    output.push('\n');
                 }
+                if !query_text.is_empty() {
+                    output.push_str(&query_text);
+                    output.push('\n');
+                }
+                data.domains_matched.push(domain_def.name.clone());
+                data.rules_injected += rules_text.lines().filter(|l| l.starts_with("  ")).count();
+                session.mark_injected(&domain_def.name, rules_hash);
+                session_dirty = true;
             }
         }
 
@@ -132,20 +130,12 @@ pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Res
             if let Some(fp_str) = fp.to_str() {
                 if is_source_file(fp_str) {
                     // Session dedup: only inject AST map once per file per session
-                    let base_dir = crate::config::find_workspace_base(cwd);
-                    let mut session = base_dir
-                        .as_deref()
-                        .map(SessionState::load)
-                        .unwrap_or_default();
-
                     if !session.has_ast_injected(fp_str) {
                         if let Some(map) = crud::ast_query::file_map_compact(cwd, &config.namespace, fp_str) {
                             output.push_str(&map);
                             output.push('\n');
                             session.mark_ast_injected(fp_str);
-                            if let Some(bd) = base_dir.as_deref() {
-                                let _ = session.save(bd);
-                            }
+                            session_dirty = true;
                             data.ast_injected = true;
                         }
                     }
@@ -156,15 +146,22 @@ pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Res
         // ─── PAUL context injection (file change history) ───────
         // When editing a file that has FileChange/Decision history in the
         // graph, surface the decisions and changes that shaped it.
-        if let Some(store) = load_merged_graph(cwd) {
+        if let Some(store) = &graph_store {
             for fp in &file_paths {
                 if let Some(fp_str) = fp.to_str() {
-                    let paul_ctx = query_paul_context(&store, config, fp_str);
+                    let paul_ctx = query_paul_context(store, config, fp_str);
                     if !paul_ctx.is_empty() {
                         output.push_str(&paul_ctx);
                         output.push('\n');
                     }
                 }
+            }
+        }
+
+        // Single save for the whole branch — only when something changed.
+        if session_dirty {
+            if let Some(bd) = base_dir.as_deref() {
+                let _ = session.save(bd);
             }
         }
     }
@@ -361,10 +358,7 @@ fn context_mode_intercept(event: &serde_json::Value, cwd: &Path) -> Option<Strin
 fn match_by_file<'a>(
     domains: &'a [domain::DomainDef],
     file_paths: &[String],
-    session: &SessionState,
 ) -> Vec<&'a domain::DomainDef> {
-    let _ = session; // reserved for future file-level dedup
-
     domains
         .iter()
         .filter(|d| {
@@ -453,32 +447,6 @@ fn format_toml_rules(domain_def: &domain::DomainDef) -> String {
         out.push_str(&format!("  {i}. {rule}\n"));
     }
     out
-}
-
-/// Load a merged graph from global (~/.base-gbl/.base/graph.nq) and workspace tiers.
-fn load_merged_graph(cwd: &Path) -> Option<oxigraph::store::Store> {
-    let mut paths: Vec<std::path::PathBuf> = Vec::new();
-
-    if let Some(home) = dirs::home_dir() {
-        let global_trig = home.join(".base-gbl").join(".base").join("graph.nq");
-        if global_trig.exists() {
-            paths.push(global_trig);
-        }
-    }
-
-    if let Some(base_dir) = crate::config::find_workspace_base(cwd) {
-        let ws_trig = base_dir.join("graph.nq");
-        if ws_trig.exists() {
-            paths.push(ws_trig);
-        }
-    }
-
-    if paths.is_empty() {
-        return None;
-    }
-
-    let path_refs: Vec<&Path> = paths.iter().map(|p| p.as_path()).collect();
-    crate::store::load_graphs(&path_refs).ok()
 }
 
 /// Query PAUL FileChange and Decision entities linked to a file path.

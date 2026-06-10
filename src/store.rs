@@ -89,6 +89,34 @@ pub fn load_graphs(paths: &[&Path]) -> Result<Store> {
     Ok(store)
 }
 
+/// Load a merged graph from global (~/.base-gbl/.base/graph.nq) and workspace tiers
+/// into one store so SPARQL queries span all tiers. Returns None only if neither
+/// graph exists (fail-open). Call ONCE per hook invocation and share the store.
+pub fn load_merged(cwd: &Path) -> Option<Store> {
+    let mut paths: Vec<std::path::PathBuf> = Vec::new();
+
+    if let Some(home) = dirs::home_dir() {
+        let global_nq = home.join(".base-gbl").join(".base").join("graph.nq");
+        if global_nq.exists() {
+            paths.push(global_nq);
+        }
+    }
+
+    if let Some(base_dir) = crate::config::find_workspace_base(cwd) {
+        let ws_nq = base_dir.join("graph.nq");
+        if ws_nq.exists() {
+            paths.push(ws_nq);
+        }
+    }
+
+    if paths.is_empty() {
+        return None;
+    }
+
+    let path_refs: Vec<&Path> = paths.iter().map(|p| p.as_path()).collect();
+    load_graphs(&path_refs).ok()
+}
+
 /// Run a SPARQL query (SELECT or ASK) against the store.
 pub fn query(store: &Store, sparql: &str) -> Result<QueryResults> {
     store

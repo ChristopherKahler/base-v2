@@ -56,10 +56,18 @@ pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Res
         }
     }
 
-    // Gather active file paths from graph (if available)
-    let active_paths = gather_active_paths(config, cwd);
+    // Ensure domain sync has run BEFORE loading the graph, so the single
+    // load below sees freshly synced rules. Marker-gated — no-op when fresh.
+    ensure_domain_sync(config, cwd);
 
-    let matched = match_domains(&prompt, &domains, &session, &active_paths);
+    // Single graph load per invocation (merged: global + workspace).
+    // gather_active_paths and the injection loop all share this store.
+    let graph_store = crate::store::load_merged(cwd);
+
+    // Gather active file paths from graph (if available)
+    let active_paths = gather_active_paths(config, &graph_store);
+
+    let matched = match_domains(&prompt, &domains, &active_paths);
     if matched.is_empty() {
         // Still save session state (prompt_count) even if nothing matched
         if let Some(ref base_dir) = base_dir {
@@ -70,12 +78,6 @@ pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Res
             ..Default::default()
         });
     }
-
-    // Ensure domain sync has run (auto-sync if domains.toml is newer than graph)
-    ensure_domain_sync(config, cwd);
-
-    // Try to load the graph for graph-backed injection (merged: global + workspace)
-    let graph_store = load_merged_graph(cwd);
 
     // Emit context bracket tag
     let mut output = format!(
@@ -616,38 +618,6 @@ fn needs_sync_check(domains_toml: &Path, marker: &Path) -> bool {
     }
 }
 
-// ─── Graph loading ──────────────────────────────────────────
-
-/// Load a merged graph from global (~/.base-gbl/.base/graph.nq) and workspace tiers.
-/// Both are loaded into one Oxigraph store so SPARQL queries span all tiers.
-/// Returns None only if neither graph exists (fail-open).
-fn load_merged_graph(cwd: &Path) -> Option<oxigraph::store::Store> {
-    let mut paths: Vec<std::path::PathBuf> = Vec::new();
-
-    // Global tier: ~/.base-gbl/.base/graph.nq
-    if let Some(home) = dirs::home_dir() {
-        let global_trig = home.join(".base-gbl").join(".base").join("graph.nq");
-        if global_trig.exists() {
-            paths.push(global_trig);
-        }
-    }
-
-    // Workspace tier: {workspace}/.base/graph.nq
-    if let Some(base_dir) = crate::config::find_workspace_base(cwd) {
-        let ws_trig = base_dir.join("graph.nq");
-        if ws_trig.exists() {
-            paths.push(ws_trig);
-        }
-    }
-
-    if paths.is_empty() {
-        return None;
-    }
-
-    let path_refs: Vec<&Path> = paths.iter().map(|p| p.as_path()).collect();
-    crate::store::load_graphs(&path_refs).ok()
-}
-
 // ─── Prompt extraction ──────────────────────────────────────
 
 /// Extract prompt text from the hook event JSON.
@@ -668,8 +638,8 @@ fn extract_prompt(event: &serde_json::Value) -> String {
 
 /// Gather recently-active file paths from the merged graph (for path-based domain matching).
 /// Returns empty vec if no graph available — graceful degradation.
-fn gather_active_paths(config: &BaseConfig, cwd: &Path) -> Vec<String> {
-    let graph = match load_merged_graph(cwd) {
+fn gather_active_paths(config: &BaseConfig, graph: &Option<oxigraph::store::Store>) -> Vec<String> {
+    let graph = match graph {
         Some(g) => g,
         None => return Vec::new(),
     };

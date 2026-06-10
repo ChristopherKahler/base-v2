@@ -79,7 +79,8 @@ fn user_prompt_submit_dedup_across_calls() {
     user_prompt_submit::handle(&config, tmp.path(), &event).unwrap();
 
     // Second call — should dedup (session state persisted)
-    // Verify no error; actual dedup verified by matcher unit tests
+    // Dedup detail covered by graph_injection_test.rs — the hook-layer
+    // rendered-output hash is the single dedup gate
     let result = user_prompt_submit::handle(&config, tmp.path(), &event);
     assert!(result.is_ok());
 }

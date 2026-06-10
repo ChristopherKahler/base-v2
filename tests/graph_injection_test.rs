@@ -209,8 +209,53 @@ fn dedup_skips_unchanged_graph_injection() {
         "GLOBAL should be marked as injected after first call"
     );
 
-    // Second call with same prompt — GLOBAL should be deduped
-    // (The handle function runs, but the domain won't appear in output because hash matches)
-    let result = base::hook::user_prompt_submit::handle(&config, tmp.path(), &event);
-    assert!(result.is_ok());
+    // Second call with same prompt — GLOBAL should be deduped at the hook
+    // layer (single dedup gate: rendered-output hash)
+    let result = base::hook::user_prompt_submit::handle(&config, tmp.path(), &event).unwrap();
+    assert!(
+        result.suppressed >= 1,
+        "Second identical call should report suppressed domains, got: {}",
+        result.suppressed
+    );
+}
+
+#[test]
+fn rule_change_reinjects_after_dedup() {
+    let tmp = tempfile::tempdir().unwrap();
+    setup_synced_workspace(tmp.path());
+
+    let event = serde_json::json!({ "prompt": "hello" });
+    let config = base::config::BaseConfig::load(tmp.path());
+
+    // First call — injects GLOBAL, marks it in session state
+    let first = base::hook::user_prompt_submit::handle(&config, tmp.path(), &event).unwrap();
+    assert!(
+        first.domains_matched.iter().any(|d| d == "GLOBAL"),
+        "First call should inject GLOBAL, got: {:?}",
+        first.domains_matched
+    );
+
+    // Change GLOBAL's rules and re-sync — rendered output hash changes
+    let base_dir = tmp.path().join(".base");
+    std::fs::write(
+        base_dir.join("domains.toml"),
+        r#"
+[[domain]]
+name = "GLOBAL"
+mode = "always"
+prompt_keywords = []
+rules = ["Never lie", "Always verify", "NEW RULE added later"]
+"#,
+    )
+    .unwrap();
+    base::domain::sync::sync_domains_to_graph(&config, tmp.path(), None).unwrap();
+
+    // Second call — changed content must RE-inject, not dedup
+    let second = base::hook::user_prompt_submit::handle(&config, tmp.path(), &event).unwrap();
+    assert!(
+        second.domains_matched.iter().any(|d| d == "GLOBAL"),
+        "Changed rules should re-inject GLOBAL, got: {:?} (suppressed: {})",
+        second.domains_matched,
+        second.suppressed
+    );
 }

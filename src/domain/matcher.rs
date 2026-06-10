@@ -1,4 +1,3 @@
-use crate::domain::session::{rules_hash, SessionState};
 use crate::domain::DomainDef;
 
 /// Why a domain matched. Only tracked when DEVMODE is on.
@@ -29,12 +28,13 @@ pub struct DomainMatch<'a> {
 }
 
 /// Match domains against prompt text and active file paths.
-/// Returns domains that should be injected (not yet injected, or rules changed),
-/// along with the reason each matched.
+/// Pure matcher — returns every domain whose triggers fire, with the reason.
+/// Dedup/suppression is owned by the hook layer, which hashes the fully
+/// rendered output (rules + neighborhood + query results) — the only hash
+/// that accurately reflects what would be injected.
 pub fn match_domains<'a>(
     prompt: &str,
     domains: &'a [DomainDef],
-    session: &SessionState,
     active_paths: &[String],
 ) -> Vec<DomainMatch<'a>> {
     let prompt_lower = prompt.to_lowercase();
@@ -42,20 +42,7 @@ pub fn match_domains<'a>(
     domains
         .iter()
         .filter_map(|d| {
-            // Check if domain should be matched
             let reason = is_matched(d, &prompt_lower, active_paths)?;
-
-            // Check dedup: skip if already injected with same content hash.
-            // Include query name in hash so query-only domains aren't deduped as "empty rules".
-            let mut hash_input: Vec<String> = d.rules.clone();
-            if let Some(ref q) = d.query {
-                hash_input.push(format!("__query__:{q}"));
-            }
-            let hash = rules_hash(&hash_input);
-            if session.is_injected(&d.name, hash) {
-                return None;
-            }
-
             Some(DomainMatch { domain: d, reason })
         })
         .collect()
@@ -119,8 +106,7 @@ mod tests {
     #[test]
     fn always_on_always_matches() {
         let domains = vec![make_domain("global", "always", &[], &["Rule 1"])];
-        let session = SessionState::default();
-        let matched = match_domains("anything", &domains, &session, &[]);
+        let matched = match_domains("anything", &domains, &[]);
         assert_eq!(matched.len(), 1);
         assert_eq!(matched[0].domain.name, "global");
         assert_eq!(matched[0].reason, MatchReason::Always);
@@ -129,21 +115,19 @@ mod tests {
     #[test]
     fn keyword_match() {
         let domains = vec![make_domain("dev", "triggered", &["fix bug"], &["Dev rule"])];
-        let session = SessionState::default();
 
-        let matched = match_domains("please fix bug in auth", &domains, &session, &[]);
+        let matched = match_domains("please fix bug in auth", &domains, &[]);
         assert_eq!(matched.len(), 1);
         assert_eq!(matched[0].reason, MatchReason::Keyword);
 
-        let matched = match_domains("check my calendar", &domains, &session, &[]);
+        let matched = match_domains("check my calendar", &domains, &[]);
         assert!(matched.is_empty());
     }
 
     #[test]
     fn keyword_case_insensitive() {
         let domains = vec![make_domain("dev", "triggered", &["Fix Bug"], &["Rule"])];
-        let session = SessionState::default();
-        let matched = match_domains("FIX BUG please", &domains, &session, &[]);
+        let matched = match_domains("FIX BUG please", &domains, &[]);
         assert_eq!(matched.len(), 1);
     }
 
@@ -152,12 +136,10 @@ mod tests {
         let mut domain = make_domain("dev", "triggered", &[], &["Rule"]);
         domain.paths = vec!["src/".into()];
         let domains = vec![domain];
-        let session = SessionState::default();
 
         let matched = match_domains(
             "hello",
             &domains,
-            &session,
             &["src/main.rs".into()],
         );
         assert_eq!(matched.len(), 1);
@@ -169,12 +151,10 @@ mod tests {
         let mut domain = make_domain("dev", "triggered", &["code"], &["Rule"]);
         domain.paths = vec!["src/".into()];
         let domains = vec![domain];
-        let session = SessionState::default();
 
         let matched = match_domains(
             "write code",
             &domains,
-            &session,
             &["src/main.rs".into()],
         );
         assert_eq!(matched.len(), 1);
@@ -186,49 +166,24 @@ mod tests {
         let mut domain = make_domain("dev", "triggered", &["code"], &["Rule"]);
         domain.exclude = vec!["review only".into()];
         let domains = vec![domain];
-        let session = SessionState::default();
 
-        let matched = match_domains("write code for this", &domains, &session, &[]);
+        let matched = match_domains("write code for this", &domains, &[]);
         assert_eq!(matched.len(), 1);
 
-        let matched = match_domains("review only the code", &domains, &session, &[]);
+        let matched = match_domains("review only the code", &domains, &[]);
         assert!(matched.is_empty());
     }
 
     #[test]
-    fn dedup_skips_already_injected() {
-        let domains = vec![make_domain("global", "always", &[], &["Rule 1"])];
-        let hash = rules_hash(&["Rule 1".into()]);
-        let mut session = SessionState::default();
-        session.mark_injected("global", hash);
-
-        let matched = match_domains("anything", &domains, &session, &[]);
-        assert!(matched.is_empty(), "Should be deduped");
-    }
-
-    #[test]
-    fn dedup_reinjects_on_rule_change() {
-        let domains = vec![make_domain("global", "always", &[], &["Rule 1 UPDATED"])];
-        let old_hash = rules_hash(&["Rule 1 ORIGINAL".into()]);
-        let mut session = SessionState::default();
-        session.mark_injected("global", old_hash);
-
-        let matched = match_domains("anything", &domains, &session, &[]);
-        assert_eq!(matched.len(), 1, "Should re-inject because hash changed");
-    }
-
-    #[test]
     fn no_domains_no_match() {
-        let session = SessionState::default();
-        let matched = match_domains("anything", &[], &session, &[]);
+        let matched = match_domains("anything", &[], &[]);
         assert!(matched.is_empty());
     }
 
     #[test]
     fn no_rules_domain_still_matched_but_empty() {
         let domains = vec![make_domain("empty", "always", &[], &[])];
-        let session = SessionState::default();
-        let matched = match_domains("anything", &domains, &session, &[]);
+        let matched = match_domains("anything", &domains, &[]);
         assert_eq!(matched.len(), 1);
         assert!(matched[0].domain.rules.is_empty());
     }
