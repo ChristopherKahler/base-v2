@@ -20,7 +20,7 @@ fn add_task_linked_to_project() {
     assert_eq!(slug, "myproject.fix-auth");
 
     // Verify task exists and is linked to project
-    let trig_path = tmp.path().join(".base").join("graph.trig");
+    let trig_path = tmp.path().join(".base").join("graph.nq");
     let store = base::store::load_graph(&trig_path).unwrap();
 
     let sparql = format!(
@@ -64,7 +64,7 @@ fn mark_task_done() {
     crud::task::done(tmp.path(), &ns, "proj.dothis").unwrap();
 
     // Verify status is completed
-    let trig_path = tmp.path().join(".base").join("graph.trig");
+    let trig_path = tmp.path().join(".base").join("graph.nq");
     let store = base::store::load_graph(&trig_path).unwrap();
 
     let sparql = format!(
@@ -99,7 +99,7 @@ fn add_task_default_priority() {
     crud::project::add(tmp.path(), &ns, "Proj", "active", None).unwrap();
     crud::task::add(tmp.path(), &ns, "proj", "NoPri", None, None).unwrap();
 
-    let trig_path = tmp.path().join(".base").join("graph.trig");
+    let trig_path = tmp.path().join(".base").join("graph.nq");
     let store = base::store::load_graph(&trig_path).unwrap();
 
     let sparql = format!(

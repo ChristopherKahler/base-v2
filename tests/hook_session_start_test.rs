@@ -3,33 +3,23 @@ use std::path::Path;
 use base::config::{BaseConfig, NamespaceConfig};
 use base::hook::session_start;
 
-/// Helper: create a workspace TriG with test data.
+/// Helper: create a workspace graph (NQuads) with test data.
 fn write_test_trig(dir: &Path) {
     let base_dir = dir.join(".base");
     std::fs::create_dir_all(&base_dir).unwrap();
     std::fs::write(
-        base_dir.join("graph.trig"),
-        r#"
-@prefix ops:  <http://ops-sys.local/ontology#> .
-@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
-@prefix proj: <http://ops-sys.local/ontology#project/> .
-@prefix gws:  <http://ops-sys.local/ontology#graph/ws/> .
-
-GRAPH gws:test {
-    proj:alpha a ops:Project ;
-        ops:name "Alpha" ;
-        ops:status "active" ;
-        ops:nextAction "Ship v1" .
-
-    proj:beta a ops:Project ;
-        ops:name "Beta" ;
-        ops:status "active" .
-
-    proj:gamma a ops:Project ;
-        ops:name "Gamma" ;
-        ops:status "blocked" ;
-        ops:blockedBy "Waiting on API keys" .
-}
+        base_dir.join("graph.nq"),
+        r#"<http://ops-sys.local/ontology#project/alpha> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://ops-sys.local/ontology#Project> <http://ops-sys.local/ontology#graph/ws/test> .
+<http://ops-sys.local/ontology#project/alpha> <http://ops-sys.local/ontology#name> "Alpha" <http://ops-sys.local/ontology#graph/ws/test> .
+<http://ops-sys.local/ontology#project/alpha> <http://ops-sys.local/ontology#status> "active" <http://ops-sys.local/ontology#graph/ws/test> .
+<http://ops-sys.local/ontology#project/alpha> <http://ops-sys.local/ontology#nextAction> "Ship v1" <http://ops-sys.local/ontology#graph/ws/test> .
+<http://ops-sys.local/ontology#project/beta> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://ops-sys.local/ontology#Project> <http://ops-sys.local/ontology#graph/ws/test> .
+<http://ops-sys.local/ontology#project/beta> <http://ops-sys.local/ontology#name> "Beta" <http://ops-sys.local/ontology#graph/ws/test> .
+<http://ops-sys.local/ontology#project/beta> <http://ops-sys.local/ontology#status> "active" <http://ops-sys.local/ontology#graph/ws/test> .
+<http://ops-sys.local/ontology#project/gamma> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://ops-sys.local/ontology#Project> <http://ops-sys.local/ontology#graph/ws/test> .
+<http://ops-sys.local/ontology#project/gamma> <http://ops-sys.local/ontology#name> "Gamma" <http://ops-sys.local/ontology#graph/ws/test> .
+<http://ops-sys.local/ontology#project/gamma> <http://ops-sys.local/ontology#status> "blocked" <http://ops-sys.local/ontology#graph/ws/test> .
+<http://ops-sys.local/ontology#project/gamma> <http://ops-sys.local/ontology#blockedBy> "Waiting on API keys" <http://ops-sys.local/ontology#graph/ws/test> .
 "#,
     )
     .unwrap();
@@ -94,7 +84,7 @@ fn session_start_failopen_on_malformed_trig() {
     let tmp = tempfile::tempdir().unwrap();
     let base_dir = tmp.path().join(".base");
     std::fs::create_dir_all(&base_dir).unwrap();
-    std::fs::write(base_dir.join("graph.trig"), "THIS IS NOT VALID TRIG {{{{").unwrap();
+    std::fs::write(base_dir.join("graph.nq"), "THIS IS NOT VALID TRIG {{{{").unwrap();
 
     let config = BaseConfig::default();
 
@@ -108,22 +98,14 @@ fn session_start_failopen_on_malformed_trig() {
 fn session_start_with_custom_namespace() {
     let tmp = tempfile::tempdir().unwrap();
 
-    // Write TriG with custom namespace
+    // Write graph (NQuads) with custom namespace
     let base_dir = tmp.path().join(".base");
     std::fs::create_dir_all(&base_dir).unwrap();
     std::fs::write(
-        base_dir.join("graph.trig"),
-        r#"
-@prefix myns: <http://example.com/ns#> .
-@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
-@prefix proj: <http://example.com/ns#project/> .
-@prefix gws:  <http://example.com/ns#graph/ws/> .
-
-GRAPH gws:test {
-    proj:delta a myns:Project ;
-        myns:name "Delta" ;
-        myns:status "active" .
-}
+        base_dir.join("graph.nq"),
+        r#"<http://example.com/ns#project/delta> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.com/ns#Project> <http://example.com/ns#graph/ws/test> .
+<http://example.com/ns#project/delta> <http://example.com/ns#name> "Delta" <http://example.com/ns#graph/ws/test> .
+<http://example.com/ns#project/delta> <http://example.com/ns#status> "active" <http://example.com/ns#graph/ws/test> .
 "#,
     )
     .unwrap();

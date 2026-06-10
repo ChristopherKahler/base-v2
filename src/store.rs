@@ -17,6 +17,11 @@ const GRAPH_FORMAT: RdfFormat = RdfFormat::NQuads;
 /// Returns Ok(true) if migration happened, Ok(false) if no legacy file found.
 pub fn migrate_trig_to_nq(nq_path: &Path) -> Result<bool> {
     let trig_path = nq_path.with_extension("trig");
+    // If the caller passed a .trig path directly, trig_path == nq_path and the
+    // "remove old file" branch below would delete the file it was asked to load.
+    if trig_path == nq_path {
+        return Ok(false);
+    }
     if !trig_path.exists() {
         return Ok(false);
     }

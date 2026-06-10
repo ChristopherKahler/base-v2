@@ -11,7 +11,7 @@ fn entity_add_person() {
     let slug = crud::entity::add(tmp.path(), &ns(), "Charlie", "person", "GLOBAL", None).unwrap();
     assert_eq!(slug, "charlie");
 
-    let trig = tmp.path().join(".base").join("graph.trig");
+    let trig = tmp.path().join(".base").join("graph.nq");
     let store = base::store::load_graph(&trig).unwrap();
     let sparql = format!(
         "PREFIX {p}: <{u}>\nASK {{ GRAPH ?g {{ <{u}entity/charlie> a {p}:Person ; {p}:name \"Charlie\" }} }}",
@@ -28,7 +28,7 @@ fn goal_add_and_list() {
     let tmp = tempfile::tempdir().unwrap();
     crud::goal::add(tmp.path(), &ns(), "Revenue", "$7k/mo").unwrap();
 
-    let trig = tmp.path().join(".base").join("graph.trig");
+    let trig = tmp.path().join(".base").join("graph.nq");
     let store = base::store::load_graph(&trig).unwrap();
     let sparql = format!(
         "PREFIX {p}: <{u}>\nASK {{ GRAPH ?g {{ ?g2 a {p}:Goal ; {p}:name \"Revenue\" ; {p}:description \"$7k/mo\" }} }}",
@@ -48,7 +48,7 @@ fn reminder_add_and_remove() {
     crud::reminder::add(tmp.path(), &ns(), "Check deploy", "2026-06-15").unwrap();
 
     // Verify exists
-    let trig = tmp.path().join(".base").join("graph.trig");
+    let trig = tmp.path().join(".base").join("graph.nq");
     let store = base::store::load_graph(&trig).unwrap();
     let sparql = format!(
         "PREFIX {p}: <{u}>\nASK {{ GRAPH ?g {{ ?r a {p}:Reminder ; {p}:name \"Check deploy\" }} }}",
@@ -76,7 +76,7 @@ fn entity_update() {
     crud::entity::add(tmp.path(), &ns(), "Charlie", "person", "GLOBAL", None).unwrap();
     crud::entity::update(tmp.path(), &ns(), "charlie", Some("inactive"), None).unwrap();
 
-    let trig = tmp.path().join(".base").join("graph.trig");
+    let trig = tmp.path().join(".base").join("graph.nq");
     let store = base::store::load_graph(&trig).unwrap();
     let sparql = format!(
         "PREFIX {p}: <{u}>\nASK {{ GRAPH ?g {{ <{u}entity/charlie> {p}:status \"inactive\" }} }}",

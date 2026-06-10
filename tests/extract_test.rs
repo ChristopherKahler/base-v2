@@ -45,7 +45,7 @@ fn sync_extracts_markdown_frontmatter() {
     assert!(report.extracted >= 1, "Should extract at least 1 file");
 
     // Verify in graph
-    let trig = tmp.path().join(".base").join("graph.trig");
+    let trig = tmp.path().join(".base").join("graph.nq");
     let store = base::store::load_graph(&trig).unwrap();
     let p = ns().prefix;
     let u = ns().uri;
@@ -73,15 +73,15 @@ fn sync_extracts_paul_json() {
     let report = extract::sync(tmp.path(), &config, false).unwrap();
     assert!(report.extracted >= 1);
 
-    let trig = tmp.path().join(".base").join("graph.trig");
+    let trig = tmp.path().join(".base").join("graph.nq");
     let store = base::store::load_graph(&trig).unwrap();
     let p = ns().prefix;
     let u = ns().uri;
     let sparql = format!(
-        "PREFIX {p}: <{u}>\nASK {{ GRAPH ?g {{ ?proj a {p}:PaulProject ; {p}:name \"myapp\" }} }}"
+        "PREFIX {p}: <{u}>\nASK {{ GRAPH ?g {{ ?proj a {p}:Project ; {p}:name \"myapp\" }} }}"
     );
     match store.query(&sparql).unwrap() {
-        QueryResults::Boolean(yes) => assert!(yes, "PaulProject should exist"),
+        QueryResults::Boolean(yes) => assert!(yes, "Project from paul.json should exist"),
         _ => panic!("Expected boolean"),
     }
 }
@@ -96,7 +96,7 @@ fn sync_is_idempotent() {
 
     // First sync
     extract::sync(tmp.path(), &config, false).unwrap();
-    let trig = tmp.path().join(".base").join("graph.trig");
+    let trig = tmp.path().join(".base").join("graph.nq");
     let store1 = base::store::load_graph(&trig).unwrap();
     let count1 = store1.len().unwrap();
 

@@ -13,7 +13,7 @@ fn log_decision_creates_triples() {
     ).unwrap();
     assert_eq!(slug, "dev.use-jwt");
 
-    let trig_path = tmp.path().join(".base").join("graph.trig");
+    let trig_path = tmp.path().join(".base").join("graph.nq");
     let store = base::store::load_graph(&trig_path).unwrap();
     let sparql = format!(
         "PREFIX {p}: <{u}>\nASK {{ GRAPH ?g {{ ?d a {p}:Decision ; {p}:name \"Use JWT\" ; {p}:rationale \"Stateless auth\" }} }}",

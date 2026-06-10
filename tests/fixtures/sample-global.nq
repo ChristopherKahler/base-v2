@@ -1,0 +1,13 @@
+<http://ops-sys.local/ontology#workspace/chris-ai-systems> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://ops-sys.local/ontology#Workspace> <http://ops-sys.local/ontology#graph/global> .
+<http://ops-sys.local/ontology#goal/north-star> <http://ops-sys.local/ontology#description> "$7k+/month on 25 hours/week or less" <http://ops-sys.local/ontology#graph/global> .
+<http://ops-sys.local/ontology#goal/north-star> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://ops-sys.local/ontology#Goal> <http://ops-sys.local/ontology#graph/global> .
+<http://ops-sys.local/ontology#goal/north-star> <http://ops-sys.local/ontology#priority> "urgent" <http://ops-sys.local/ontology#graph/global> .
+<http://ops-sys.local/ontology#entity/chris-kahler> <http://ops-sys.local/ontology#description> "Operator / founder" <http://ops-sys.local/ontology#graph/global> .
+<http://ops-sys.local/ontology#entity/chris-kahler> <http://ops-sys.local/ontology#name> "Chris Kahler" <http://ops-sys.local/ontology#graph/global> .
+<http://ops-sys.local/ontology#goal/north-star> <http://ops-sys.local/ontology#status> "active" <http://ops-sys.local/ontology#graph/global> .
+<http://ops-sys.local/ontology#workspace/chris-ai-systems> <http://ops-sys.local/ontology#path> "/home/chriskahler/chris-ai-systems" <http://ops-sys.local/ontology#graph/global> .
+<http://ops-sys.local/ontology#entity/chris-kahler> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://ops-sys.local/ontology#Person> <http://ops-sys.local/ontology#graph/global> .
+<http://ops-sys.local/ontology#goal/north-star> <http://ops-sys.local/ontology#name> "North Star" <http://ops-sys.local/ontology#graph/global> .
+<http://ops-sys.local/ontology#workspace/chris-ai-systems> <http://ops-sys.local/ontology#name> "chris-ai-systems" <http://ops-sys.local/ontology#graph/global> .
+<http://ops-sys.local/ontology#workspace/chris-ai-systems> <http://ops-sys.local/ontology#description> "Primary business workspace — Chris AI Systems brand" <http://ops-sys.local/ontology#graph/global> .
+

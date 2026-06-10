@@ -1,0 +1,32 @@
+<http://ops-sys.local/ontology#project/casegate-v2> <http://ops-sys.local/ontology#belongsTo> <http://ops-sys.local/ontology#workspace/chris-ai-systems> <http://ops-sys.local/ontology#graph/ws/chris-ai-systems> .
+<http://ops-sys.local/ontology#project/casegate-v2> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://ops-sys.local/ontology#App> <http://ops-sys.local/ontology#graph/ws/chris-ai-systems> .
+<http://ops-sys.local/ontology#task/casegate-v2.cloudflare-email> <http://ops-sys.local/ontology#name> "Cloudflare email config tweaks" <http://ops-sys.local/ontology#graph/ws/chris-ai-systems> .
+<http://ops-sys.local/ontology#task/casegate-v2.cloudflare-email> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://ops-sys.local/ontology#Task> <http://ops-sys.local/ontology#graph/ws/chris-ai-systems> .
+<http://ops-sys.local/ontology#decision/global.solo-rebrand> <http://ops-sys.local/ontology#status> "active" <http://ops-sys.local/ontology#graph/ws/chris-ai-systems> .
+<http://ops-sys.local/ontology#project/skool-community> <http://ops-sys.local/ontology#name> "Skool — AI Builders & Operators" <http://ops-sys.local/ontology#graph/ws/chris-ai-systems> .
+<http://ops-sys.local/ontology#decision/global.solo-rebrand> <http://ops-sys.local/ontology#createdAt> "2026-04-23T00:00:00-05:00"^^<http://www.w3.org/2001/XMLSchema#dateTime> <http://ops-sys.local/ontology#graph/ws/chris-ai-systems> .
+<http://ops-sys.local/ontology#project/skool-community> <http://ops-sys.local/ontology#description> "Community building" <http://ops-sys.local/ontology#graph/ws/chris-ai-systems> .
+<http://ops-sys.local/ontology#project/skool-community> <http://ops-sys.local/ontology#belongsTo> <http://ops-sys.local/ontology#workspace/chris-ai-systems> <http://ops-sys.local/ontology#graph/ws/chris-ai-systems> .
+<http://ops-sys.local/ontology#decision/global.solo-rebrand> <http://ops-sys.local/ontology#name> "Solo rebrand to Chris AI Systems" <http://ops-sys.local/ontology#graph/ws/chris-ai-systems> .
+<http://ops-sys.local/ontology#project/skool-community> <http://ops-sys.local/ontology#status> "blocked" <http://ops-sys.local/ontology#graph/ws/chris-ai-systems> .
+<http://ops-sys.local/ontology#project/casegate-v2> <http://ops-sys.local/ontology#name> "CaseGate v2" <http://ops-sys.local/ontology#graph/ws/chris-ai-systems> .
+<http://ops-sys.local/ontology#project/casegate-v2> <http://ops-sys.local/ontology#hasGoal> <http://ops-sys.local/ontology#goal/north-star> <http://ops-sys.local/ontology#graph/ws/chris-ai-systems> .
+<http://ops-sys.local/ontology#decision/global.solo-rebrand> <http://ops-sys.local/ontology#rationale> "Partnership dissolved 2026-04-22" <http://ops-sys.local/ontology#graph/ws/chris-ai-systems> .
+<http://ops-sys.local/ontology#project/casegate-v2> <http://ops-sys.local/ontology#description> "Legal intake SaaS" <http://ops-sys.local/ontology#graph/ws/chris-ai-systems> .
+<http://ops-sys.local/ontology#project/casegate-v2> <http://ops-sys.local/ontology#priority> "high" <http://ops-sys.local/ontology#graph/ws/chris-ai-systems> .
+<http://ops-sys.local/ontology#project/casegate-v2> <http://ops-sys.local/ontology#revenue> "$subscription recurring" <http://ops-sys.local/ontology#graph/ws/chris-ai-systems> .
+<http://ops-sys.local/ontology#project/casegate-v2> <http://ops-sys.local/ontology#nextAction> "Charlie finishing UAT" <http://ops-sys.local/ontology#graph/ws/chris-ai-systems> .
+<http://ops-sys.local/ontology#task/casegate-v2.cloudflare-email> <http://ops-sys.local/ontology#status> "active" <http://ops-sys.local/ontology#graph/ws/chris-ai-systems> .
+<http://ops-sys.local/ontology#project/casegate-v2> <http://ops-sys.local/ontology#lastActive> "2026-05-31T12:00:00-05:00"^^<http://www.w3.org/2001/XMLSchema#dateTime> <http://ops-sys.local/ontology#graph/ws/chris-ai-systems> .
+<http://ops-sys.local/ontology#project/skool-community> <http://ops-sys.local/ontology#lastActive> "2026-04-15T10:00:00-05:00"^^<http://www.w3.org/2001/XMLSchema#dateTime> <http://ops-sys.local/ontology#graph/ws/chris-ai-systems> .
+<http://ops-sys.local/ontology#project/casegate-v2> <http://ops-sys.local/ontology#status> "active" <http://ops-sys.local/ontology#graph/ws/chris-ai-systems> .
+<http://ops-sys.local/ontology#project/casegate-v2> <http://ops-sys.local/ontology#hasTask> <http://ops-sys.local/ontology#task/casegate-v2.cloudflare-email> <http://ops-sys.local/ontology#graph/ws/chris-ai-systems> .
+<http://ops-sys.local/ontology#project/skool-community> <http://ops-sys.local/ontology#priority> "urgent" <http://ops-sys.local/ontology#graph/ws/chris-ai-systems> .
+<http://ops-sys.local/ontology#decision/global.solo-rebrand> <http://ops-sys.local/ontology#recall> "brand, partnership, charlie" <http://ops-sys.local/ontology#graph/ws/chris-ai-systems> .
+<http://ops-sys.local/ontology#project/skool-community> <http://ops-sys.local/ontology#staleThreshold> "3"^^<http://www.w3.org/2001/XMLSchema#integer> <http://ops-sys.local/ontology#graph/ws/chris-ai-systems> .
+<http://ops-sys.local/ontology#task/casegate-v2.cloudflare-email> <http://ops-sys.local/ontology#priority> "medium" <http://ops-sys.local/ontology#graph/ws/chris-ai-systems> .
+<http://ops-sys.local/ontology#decision/global.solo-rebrand> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://ops-sys.local/ontology#Decision> <http://ops-sys.local/ontology#graph/ws/chris-ai-systems> .
+<http://ops-sys.local/ontology#project/skool-community> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://ops-sys.local/ontology#TrackingProject> <http://ops-sys.local/ontology#graph/ws/chris-ai-systems> .
+<http://ops-sys.local/ontology#project/casegate-v2> <http://ops-sys.local/ontology#staleThreshold> "3"^^<http://www.w3.org/2001/XMLSchema#integer> <http://ops-sys.local/ontology#graph/ws/chris-ai-systems> .
+<http://ops-sys.local/ontology#project/skool-community> <http://ops-sys.local/ontology#blockedBy> "28-day challenge design incomplete" <http://ops-sys.local/ontology#graph/ws/chris-ai-systems> .
+

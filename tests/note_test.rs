@@ -159,7 +159,7 @@ fn notes_for_domain_returns_linked_notes() {
 
     // Load graph and query
     let base_dir = base::config::find_workspace_base(tmp.path()).unwrap();
-    let store = base::store::load_graph(&base_dir.join("graph.trig")).unwrap();
+    let store = base::store::load_graph(&base_dir.join("graph.nq")).unwrap();
     let domain_iri = base::crud::build_iri(ns, "domain", "development");
 
     let notes = base::crud::note::notes_for_domain(&store, ns, &domain_iri);

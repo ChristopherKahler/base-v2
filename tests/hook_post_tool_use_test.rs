@@ -5,27 +5,18 @@ use oxigraph::sparql::QueryResults;
 use base::config::BaseConfig;
 use base::hook::post_tool_use;
 
-/// Helper: create a workspace TriG with a project that has ops:path set.
+/// Helper: create a workspace graph (NQuads) with a project that has ops:path set.
 fn write_trig_with_path(dir: &Path, project_path: &str) {
     let base_dir = dir.join(".base");
     std::fs::create_dir_all(&base_dir).unwrap();
     std::fs::write(
-        base_dir.join("graph.trig"),
+        base_dir.join("graph.nq"),
         format!(
-            r#"
-@prefix ops:  <http://ops-sys.local/ontology#> .
-@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
-@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
-@prefix proj: <http://ops-sys.local/ontology#project/> .
-@prefix gws:  <http://ops-sys.local/ontology#graph/ws/> .
-
-GRAPH gws:test {{
-    proj:alpha a ops:Project ;
-        ops:name "Alpha" ;
-        ops:status "active" ;
-        ops:path "{project_path}" ;
-        ops:lastActive "2026-01-01T00:00:00-06:00"^^xsd:dateTime .
-}}
+            r#"<http://ops-sys.local/ontology#project/alpha> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://ops-sys.local/ontology#Project> <http://ops-sys.local/ontology#graph/ws/test> .
+<http://ops-sys.local/ontology#project/alpha> <http://ops-sys.local/ontology#name> "Alpha" <http://ops-sys.local/ontology#graph/ws/test> .
+<http://ops-sys.local/ontology#project/alpha> <http://ops-sys.local/ontology#status> "active" <http://ops-sys.local/ontology#graph/ws/test> .
+<http://ops-sys.local/ontology#project/alpha> <http://ops-sys.local/ontology#path> "{project_path}" <http://ops-sys.local/ontology#graph/ws/test> .
+<http://ops-sys.local/ontology#project/alpha> <http://ops-sys.local/ontology#lastActive> "2026-01-01T00:00:00-06:00"^^<http://www.w3.org/2001/XMLSchema#dateTime> <http://ops-sys.local/ontology#graph/ws/test> .
 "#
         ),
     )
@@ -50,7 +41,7 @@ fn post_tool_use_updates_last_active() {
     assert!(result.is_ok(), "post-tool-use should succeed: {result:?}");
 
     // Reload the TriG and verify lastActive was updated
-    let trig_path = tmp.path().join(".base").join("graph.trig");
+    let trig_path = tmp.path().join(".base").join("graph.nq");
     let store = base::store::load_graph(&trig_path).unwrap();
 
     let sparql = r#"
@@ -97,7 +88,7 @@ fn post_tool_use_no_match_no_mutation() {
     assert!(result.is_ok(), "Should succeed even with no match");
 
     // Verify lastActive is UNCHANGED (still original value)
-    let trig_path = tmp.path().join(".base").join("graph.trig");
+    let trig_path = tmp.path().join(".base").join("graph.nq");
     let store = base::store::load_graph(&trig_path).unwrap();
 
     let sparql = r#"

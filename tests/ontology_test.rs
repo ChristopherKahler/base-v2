@@ -72,7 +72,7 @@ fn test_vocabulary_loads() {
 
 #[test]
 fn test_workspace_graph_loads() {
-    let path = Path::new("tests/fixtures/sample-workspace.trig");
+    let path = Path::new("tests/fixtures/sample-workspace.nq");
     let store = base::store::load_graph(path).unwrap();
 
     // SELECT active projects
@@ -110,7 +110,7 @@ fn test_workspace_graph_loads() {
 
 #[test]
 fn test_round_trip() {
-    let source = Path::new("tests/fixtures/sample-workspace.trig");
+    let source = Path::new("tests/fixtures/sample-workspace.nq");
     let store = base::store::load_graph(source).unwrap();
 
     // Count triples before write-back
@@ -119,7 +119,7 @@ fn test_round_trip() {
 
     // Write to temp file
     let tmp_dir = tempfile::tempdir().unwrap();
-    let tmp_path = tmp_dir.path().join("roundtrip.trig");
+    let tmp_path = tmp_dir.path().join("roundtrip.nq");
     base::store::write_back(&store, &tmp_path).unwrap();
 
     // Reload from written file
@@ -157,8 +157,8 @@ fn test_round_trip() {
 
 #[test]
 fn test_cross_tier_query() {
-    let global = Path::new("tests/fixtures/sample-global.trig");
-    let workspace = Path::new("tests/fixtures/sample-workspace.trig");
+    let global = Path::new("tests/fixtures/sample-global.nq");
+    let workspace = Path::new("tests/fixtures/sample-workspace.nq");
     let store = base::store::load_graphs(&[global, workspace]).unwrap();
 
     // Traverse: workspace project → hasGoal → global goal, get goal name
@@ -199,11 +199,11 @@ fn test_cross_tier_query() {
 
 #[test]
 fn test_atomic_write_no_corrupt() {
-    let source = Path::new("tests/fixtures/sample-workspace.trig");
+    let source = Path::new("tests/fixtures/sample-workspace.nq");
     let store = base::store::load_graph(source).unwrap();
 
     let tmp_dir = tempfile::tempdir().unwrap();
-    let out_path = tmp_dir.path().join("atomic.trig");
+    let out_path = tmp_dir.path().join("atomic.nq");
 
     // Write
     base::store::write_back(&store, &out_path).unwrap();
@@ -215,7 +215,7 @@ fn test_atomic_write_no_corrupt() {
     );
 
     // Verify temp file was cleaned up (renamed away)
-    let tmp_file = out_path.with_extension("trig.tmp");
+    let tmp_file = out_path.with_extension("nq.tmp");
     assert!(
         !tmp_file.exists(),
         "Temp file should not remain after atomic rename"

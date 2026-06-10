@@ -16,8 +16,8 @@ fn add_project_creates_triples() {
     assert_eq!(slug, "test-project");
 
     // Reload and verify
-    let trig_path = tmp.path().join(".base").join("graph.trig");
-    assert!(trig_path.exists(), "graph.trig should be created");
+    let trig_path = tmp.path().join(".base").join("graph.nq");
+    assert!(trig_path.exists(), "graph.nq should be created");
 
     let store = base::store::load_graph(&trig_path).unwrap();
     let sparql = format!(
@@ -38,7 +38,7 @@ fn add_project_with_custom_path() {
 
     crud::project::add(tmp.path(), &ns, "PathTest", "active", Some("/custom/path")).unwrap();
 
-    let trig_path = tmp.path().join(".base").join("graph.trig");
+    let trig_path = tmp.path().join(".base").join("graph.nq");
     let store = base::store::load_graph(&trig_path).unwrap();
     let sparql = format!(
         "PREFIX {p}: <{u}>\n\
@@ -84,7 +84,7 @@ fn update_project_changes_status() {
     crud::project::update(tmp.path(), &ns, "updatable", Some("blocked"), Some("waiting on API"), None).unwrap();
 
     // Verify new status
-    let trig_path = tmp.path().join(".base").join("graph.trig");
+    let trig_path = tmp.path().join(".base").join("graph.nq");
     let store = base::store::load_graph(&trig_path).unwrap();
 
     let sparql = format!(
