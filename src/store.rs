@@ -117,6 +117,19 @@ pub fn load_merged(cwd: &Path) -> Option<Store> {
     load_graphs(&path_refs).ok()
 }
 
+/// Load a Turtle file (e.g. ast.ttl) into an existing store's default graph.
+/// AST data lives ONLY in ast.ttl — it is never merged into graph.nq
+/// (appending Turtle to an NQuads file corrupts it; see AUDIT C10).
+pub fn load_turtle_into(store: &Store, path: &Path) -> Result<()> {
+    let file = fs::File::open(path)
+        .with_context(|| format!("Failed to open {}", path.display()))?;
+    let reader = BufReader::new(file);
+    store
+        .load_from_reader(RdfFormat::Turtle, reader)
+        .with_context(|| format!("Failed to parse Turtle from {}", path.display()))?;
+    Ok(())
+}
+
 /// Run a SPARQL query (SELECT or ASK) against the store.
 pub fn query(store: &Store, sparql: &str) -> Result<QueryResults> {
     store

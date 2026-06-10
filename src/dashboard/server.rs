@@ -77,6 +77,21 @@ pub async fn start(port: u16, cwd: PathBuf) {
         }
     };
 
+    // AST entities live in ast.ttl (never merged into graph.nq — AUDIT C10).
+    // Load each workspace's ast.ttl alongside so the graph explorer sees code entities.
+    for p in &trig_paths {
+        if let Some(base_dir) = p.parent() {
+            let ast_path = base_dir.join("ast.ttl");
+            if ast_path.exists() {
+                if let Err(e) = crate::store::load_turtle_into(&store, &ast_path) {
+                    eprintln!("Failed to load {}: {e}", ast_path.display());
+                } else {
+                    println!("  • {} (AST)", ast_path.display());
+                }
+            }
+        }
+    }
+
     // Rotate hook event log if oversized
     super::api::rotate_hook_log(&trig_path);
 

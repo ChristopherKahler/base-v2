@@ -458,7 +458,13 @@ fn resolve(cwd: &std::path::Path, ns: &base::config::NamespaceConfig, entity_typ
 
 pub fn run() {
     let cli = Cli::parse();
-    let cwd = std::env::current_dir().unwrap_or_default();
+    let cwd = match std::env::current_dir() {
+        Ok(d) => d,
+        Err(e) => {
+            eprintln!("Error: cannot determine current directory: {e}");
+            std::process::exit(1);
+        }
+    };
     let config = BaseConfig::load(&cwd);
 
     match cli.command {
@@ -468,13 +474,13 @@ pub fn run() {
         Some(Commands::Ast { action }) => match action {
             AstAction::Query { contains, file, calls, imports } => {
                 if let Some(name) = contains {
-                    let _ = crud::ast_query::contains(&cwd, &config.namespace, &name);
+                    if let Err(e) = crud::ast_query::contains(&cwd, &config.namespace, &name) { eprintln!("Error: {e}"); }
                 } else if let Some(path) = file {
-                    let _ = crud::ast_query::file(&cwd, &config.namespace, &path);
+                    if let Err(e) = crud::ast_query::file(&cwd, &config.namespace, &path) { eprintln!("Error: {e}"); }
                 } else if let Some(name) = calls {
-                    let _ = crud::ast_query::calls(&cwd, &config.namespace, &name);
+                    if let Err(e) = crud::ast_query::calls(&cwd, &config.namespace, &name) { eprintln!("Error: {e}"); }
                 } else if let Some(path) = imports {
-                    let _ = crud::ast_query::imports(&cwd, &config.namespace, &path);
+                    if let Err(e) = crud::ast_query::imports(&cwd, &config.namespace, &path) { eprintln!("Error: {e}"); }
                 } else {
                     eprintln!("Provide one of: --contains, --file, --calls, --imports");
                 }
@@ -489,10 +495,10 @@ pub fn run() {
                     Err(e) => eprintln!("Failed: {e}"),
                 }
             }
-            ProjectAction::List => { let _ = crud::project::list(&cwd, &config.namespace); }
+            ProjectAction::List => { if let Err(e) = crud::project::list(&cwd, &config.namespace) { eprintln!("Error: {e}"); } }
             ProjectAction::Get { slug } => {
                 if let Some(s) = resolve(&cwd, &config.namespace, "project", &slug) {
-                    let _ = crud::project::get(&cwd, &config.namespace, &s);
+                    if let Err(e) = crud::project::get(&cwd, &config.namespace, &s) { eprintln!("Error: {e}"); }
                 }
             }
             ProjectAction::Update { slug, status, blocked_by, next_action } => {
@@ -525,11 +531,11 @@ pub fn run() {
                     },
                     None => None,
                 };
-                let _ = crud::milestone::list(&cwd, &config.namespace, ps.as_deref());
+                if let Err(e) = crud::milestone::list(&cwd, &config.namespace, ps.as_deref()) { eprintln!("Error: {e}"); }
             }
             MilestoneAction::Get { slug } => {
                 if let Some(s) = resolve(&cwd, &config.namespace, "milestone", &slug) {
-                    let _ = crud::milestone::get(&cwd, &config.namespace, &s);
+                    if let Err(e) = crud::milestone::get(&cwd, &config.namespace, &s) { eprintln!("Error: {e}"); }
                 }
             }
             MilestoneAction::Update { slug, status, description } => {
@@ -576,12 +582,14 @@ pub fn run() {
                     },
                     None => None,
                 };
-                let _ = crud::task::list(&cwd, &config.namespace, ps.as_deref(), ms.as_deref());
+                if let Err(e) = crud::task::list(&cwd, &config.namespace, ps.as_deref(), ms.as_deref()) { eprintln!("Error: {e}"); }
             }
             TaskAction::Done { slug } => {
-                match crud::task::done(&cwd, &config.namespace, &slug) {
-                    Ok(()) => println!("Task '{slug}' completed"),
-                    Err(e) => eprintln!("Failed: {e}"),
+                if let Some(s) = resolve(&cwd, &config.namespace, "task", &slug) {
+                    match crud::task::done(&cwd, &config.namespace, &s) {
+                        Ok(()) => println!("Task '{s}' completed"),
+                        Err(e) => eprintln!("Failed: {e}"),
+                    }
                 }
             }
         },
@@ -594,7 +602,7 @@ pub fn run() {
                     Err(e) => eprintln!("Failed: {e}"),
                 }
             }
-            DecisionAction::Search { keyword } => { let _ = crud::decision::search(&cwd, &config.namespace, &keyword); }
+            DecisionAction::Search { keyword } => { if let Err(e) = crud::decision::search(&cwd, &config.namespace, &keyword) { eprintln!("Error: {e}"); } }
         },
 
         // ─── Entity ──────────────────────────────────────
@@ -605,10 +613,10 @@ pub fn run() {
                     Err(e) => eprintln!("Failed: {e}"),
                 }
             }
-            EntityAction::List => { let _ = crud::entity::list(&cwd, &config.namespace); }
+            EntityAction::List => { if let Err(e) = crud::entity::list(&cwd, &config.namespace) { eprintln!("Error: {e}"); } }
             EntityAction::Get { slug } => {
                 if let Some(s) = resolve(&cwd, &config.namespace, "entity", &slug) {
-                    let _ = crud::entity::get(&cwd, &config.namespace, &s);
+                    if let Err(e) = crud::entity::get(&cwd, &config.namespace, &s) { eprintln!("Error: {e}"); }
                 }
             }
             EntityAction::Update { slug, status, description } => {
@@ -629,7 +637,7 @@ pub fn run() {
                     Err(e) => eprintln!("Failed: {e}"),
                 }
             }
-            GoalAction::List => { let _ = crud::goal::list(&cwd, &config.namespace); }
+            GoalAction::List => { if let Err(e) = crud::goal::list(&cwd, &config.namespace) { eprintln!("Error: {e}"); } }
             GoalAction::Update { slug, status, target } => {
                 if let Some(s) = resolve(&cwd, &config.namespace, "goal", &slug) {
                     match crud::goal::update(&cwd, &config.namespace, &s, status.as_deref(), target.as_deref()) {
@@ -648,7 +656,7 @@ pub fn run() {
                     Err(e) => eprintln!("Failed: {e}"),
                 }
             }
-            ReminderAction::List => { let _ = crud::reminder::list(&cwd, &config.namespace); }
+            ReminderAction::List => { if let Err(e) = crud::reminder::list(&cwd, &config.namespace) { eprintln!("Error: {e}"); } }
             ReminderAction::Remove { slug } => {
                 match crud::reminder::remove(&cwd, &config.namespace, &slug) {
                     Ok(()) => println!("Reminder '{slug}' removed"),
@@ -693,10 +701,11 @@ pub fn run() {
 
                 let base_dir = base::config::find_workspace_base(&cwd)
                     .unwrap_or_else(|| cwd.join(".base"));
-                let graph_path = base_dir.join("graph.nq");
                 let ast_ttl = base_dir.join("ast.ttl");
 
-                println!("AST extraction: {} → {}", target_dir, graph_path.display());
+                // AST data lives ONLY in ast.ttl. Never write it into graph.nq —
+                // Turtle appended to an NQuads file corrupts the whole graph (AUDIT C10).
+                println!("AST extraction: {} → {}", target_dir, ast_ttl.display());
                 let status = std::process::Command::new("python3")
                     .arg(&ast_script)
                     .arg(target_dir)
@@ -707,32 +716,7 @@ pub fn run() {
 
                 match status {
                     Ok(s) if s.success() => {
-                        // Append AST TTL into graph.nq under a named graph
-                        match std::fs::read_to_string(&ast_ttl) {
-                            Ok(ttl_content) => {
-                                let mut graph_content = std::fs::read_to_string(&graph_path)
-                                    .unwrap_or_default();
-                                // Remove previous AST block if present
-                                if let Some(start) = graph_content.find("\n# --- AST BEGIN ---") {
-                                    if let Some(end) = graph_content.find("\n# --- AST END ---") {
-                                        graph_content = format!(
-                                            "{}{}",
-                                            &graph_content[..start],
-                                            &graph_content[end + "\n# --- AST END ---".len()..]
-                                        );
-                                    }
-                                }
-                                // Append new AST block
-                                graph_content.push_str("\n# --- AST BEGIN ---\n");
-                                graph_content.push_str(&ttl_content);
-                                graph_content.push_str("\n# --- AST END ---\n");
-                                match std::fs::write(&graph_path, graph_content) {
-                                    Ok(()) => println!("AST extraction complete — merged into graph.nq"),
-                                    Err(e) => eprintln!("Failed to write graph.nq: {e}"),
-                                }
-                            }
-                            Err(e) => eprintln!("Failed to read AST output: {e}"),
-                        }
+                        println!("AST extraction complete → {}", ast_ttl.display());
                     }
                     Ok(s) => eprintln!("AST extraction exited with code {:?}", s.code()),
                     Err(e) => eprintln!("Failed to run AST extractor: {e}"),
@@ -854,7 +838,7 @@ pub fn run() {
                 eprintln!("Provide --keyword and/or --domain");
                 return;
             }
-            let _ = crud::note::recall(&cwd, &config.namespace, keyword.as_deref(), domain.as_deref());
+            if let Err(e) = crud::note::recall(&cwd, &config.namespace, keyword.as_deref(), domain.as_deref()) { eprintln!("Error: {e}"); }
         }
 
         // ─── Install ─────────────────────────────────────────

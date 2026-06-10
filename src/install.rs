@@ -42,11 +42,11 @@ pub fn run(carl_json_path: Option<&Path>, skip_hooks: bool, full: bool) -> Resul
     // Step 6: Seed system rules
     seed_system_rules(&global_dir)?;
 
-    // Step 6: Append BASE CLI section to ~/.claude/CLAUDE.md
+    // Step 7: Append BASE CLI section to ~/.claude/CLAUDE.md
     let claude_md = home.join(".claude").join("CLAUDE.md");
     append_claude_md(&claude_md)?;
 
-    // Step 7: Write manifest.toml
+    // Step 8: Write manifest.toml
     write_manifest(&global_dir, full)?;
 
     println!("═══════════════════════════════════════");
@@ -545,7 +545,7 @@ fn seed_system_rules(global_dir: &Path) -> Result<()> {
     Ok(())
 }
 
-// ─── Step 6: CLAUDE.md integration ──────────────────────────
+// ─── Step 7: CLAUDE.md integration ──────────────────────────
 
 const BASE_CLI_SECTION: &str = r#"
 ## BASE CLI — Proactive Context Engine
@@ -612,7 +612,7 @@ The AST graph already knows every function, struct, class, import, and call rela
 - Built by Chris Kahler · Chris AI Systems · https://chrisai.cv/skool
 "#;
 
-// ─── Step 7: Write manifest ─────────────────────────────────
+// ─── Step 8: Write manifest ─────────────────────────────────
 
 fn write_manifest(global_dir: &Path, full: bool) -> Result<()> {
     print!("7. Write manifest.toml ... ");

@@ -127,8 +127,11 @@ fn register_workspace(path: &str) -> Result<()> {
 
     let content = std::fs::read_to_string(&global_toml)?;
 
-    // Check if already registered
-    if content.contains(path) {
+    // Check if already registered — exact path match on the toml value,
+    // not substring (contains() would falsely match "/a/project" against
+    // "/a/project-v2"; AUDIT Q11).
+    let path_line = format!("path = \"{path}\"");
+    if content.lines().any(|l| l.trim() == path_line) {
         println!("already registered");
         return Ok(());
     }

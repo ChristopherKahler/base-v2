@@ -43,21 +43,21 @@ pub fn run_signals(cwd: &Path, config: &BaseConfig, hook: &str) -> Result<Signal
             results.push(SignalResult { name: "active-awareness".into(), priority: 1, output });
         }
         Ok(_) => diagnostics.push(format!("<{hook}-active-awareness:no-match>")),
-        Err(_) => {}
+        Err(e) => eprintln!("base: signal 'active-awareness' failed: {e}"),
     }
     match pulse::run(cwd, ns, sig) {
         Ok(output) if !output.is_empty() => {
             results.push(SignalResult { name: "pulse".into(), priority: 2, output });
         }
         Ok(_) => diagnostics.push(format!("<{hook}-pulse:no-match>")),
-        Err(_) => {}
+        Err(e) => eprintln!("base: signal 'pulse' failed: {e}"),
     }
     match staleness::run(cwd, ns, sig) {
         Ok(output) if !output.is_empty() => {
             results.push(SignalResult { name: "staleness".into(), priority: 3, output });
         }
         Ok(_) => diagnostics.push(format!("<{hook}-staleness:no-match>")),
-        Err(_) => {}
+        Err(e) => eprintln!("base: signal 'staleness' failed: {e}"),
     }
 
     // Flow resurface signal (gated by [flow] config)
@@ -69,7 +69,7 @@ pub fn run_signals(cwd: &Path, config: &BaseConfig, hook: &str) -> Result<Signal
                 }
                 diagnostics.extend(flow_diags);
             }
-            Err(_) => {}
+            Err(e) => eprintln!("base: signal 'flow-resurface' failed: {e}"),
         }
     }
 

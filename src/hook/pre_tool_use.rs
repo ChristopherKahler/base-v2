@@ -184,7 +184,9 @@ fn is_source_file(path: &str) -> bool {
     exts.iter().any(|ext| path.ends_with(ext))
 }
 
-/// Check if AST graph has been populated for the current workspace.
+/// Check if AST data has been extracted for the current workspace.
+/// ast.ttl IS the AST store (never merged into graph.nq — AUDIT C10),
+/// so its existence is the correct populated check.
 fn ast_graph_populated(cwd: &Path) -> bool {
     let base_dir = crate::config::find_workspace_base(cwd);
     match base_dir {
