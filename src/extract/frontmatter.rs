@@ -2,10 +2,6 @@ use crate::config::NamespaceConfig;
 
 /// Extract YAML frontmatter and markdown body content into (predicate, value) triples.
 /// Returns None if no valid frontmatter found.
-pub fn extract(content: &str, file_path: &str, ns: &NamespaceConfig) -> Option<Vec<(String, String)>> {
-    extract_with_project(content, file_path, ns, None)
-}
-
 /// Extract with an optional project slug override for .paul/ docs
 /// whose path starts at .paul/ (no parent directory to derive from).
 pub fn extract_with_project(content: &str, file_path: &str, ns: &NamespaceConfig, project_hint: Option<&str>) -> Option<Vec<(String, String)>> {
@@ -383,7 +379,7 @@ mod tests {
     #[test]
     fn parse_simple_frontmatter() {
         let content = "---\ntitle: My Doc\nstatus: active\n---\n\n# Content";
-        let triples = extract(content, "docs/test.md", &ns()).unwrap();
+        let triples = extract_with_project(content, "docs/test.md", &ns(), None).unwrap();
         assert!(triples.iter().any(|(p, v)| p.contains("name") && v.contains("My Doc")));
         assert!(triples.iter().any(|(p, v)| p.contains("status") && v.contains("active")));
         assert!(triples.iter().any(|(p, v)| p.contains("path") && v.contains("docs/test.md")));
@@ -392,13 +388,13 @@ mod tests {
     #[test]
     fn no_frontmatter_returns_none() {
         let content = "# Just a heading\n\nSome text";
-        assert!(extract(content, "test.md", &ns()).is_none());
+        assert!(extract_with_project(content, "test.md", &ns(), None).is_none());
     }
 
     #[test]
     fn empty_frontmatter_returns_none() {
         let content = "---\n---\n\nContent";
-        assert!(extract(content, "test.md", &ns()).is_none());
+        assert!(extract_with_project(content, "test.md", &ns(), None).is_none());
     }
 
     // --- Tags: individual triples ---
@@ -406,7 +402,7 @@ mod tests {
     #[test]
     fn tags_emit_individual_triples() {
         let content = "---\ntitle: Tagged\ntags: rust, sparql, hooks\n---\n";
-        let triples = extract(content, "test.md", &ns()).unwrap();
+        let triples = extract_with_project(content, "test.md", &ns(), None).unwrap();
         let tags: Vec<_> = triples
             .iter()
             .filter(|(p, _)| p.contains("hasTag"))
@@ -420,7 +416,7 @@ mod tests {
     #[test]
     fn tags_bracket_syntax() {
         let content = "---\ntitle: Tagged\ntags: [alpha, beta]\n---\n";
-        let triples = extract(content, "test.md", &ns()).unwrap();
+        let triples = extract_with_project(content, "test.md", &ns(), None).unwrap();
         let tags: Vec<_> = triples
             .iter()
             .filter(|(p, _)| p.contains("hasTag"))
@@ -436,7 +432,7 @@ mod tests {
     fn related_to_creates_entity_edges() {
         let content = "---\ntitle: Plan\nrelatedTo: [signal-mod, hook-engine]\n---\n";
         let n = ns();
-        let triples = extract(content, "test.md", &n).unwrap();
+        let triples = extract_with_project(content, "test.md", &n, None).unwrap();
         let edges: Vec<_> = triples
             .iter()
             .filter(|(p, _)| p.contains("relatedTo"))
@@ -455,7 +451,7 @@ mod tests {
     #[test]
     fn type_field_maps_to_document_type() {
         let content = "---\ntitle: Decision Log\ntype: decision\n---\n";
-        let triples = extract(content, "test.md", &ns()).unwrap();
+        let triples = extract_with_project(content, "test.md", &ns(), None).unwrap();
         assert!(triples
             .iter()
             .any(|(p, v)| p.contains("documentType") && v.contains("decision")));
@@ -466,7 +462,7 @@ mod tests {
     #[test]
     fn headings_extracted_as_sections() {
         let content = "---\ntitle: Doc\n---\n\n# Top Level\n\nText.\n\n## Sub Section\n\nMore text.\n\n### Deep\n";
-        let triples = extract(content, "test.md", &ns()).unwrap();
+        let triples = extract_with_project(content, "test.md", &ns(), None).unwrap();
         let sections: Vec<_> = triples
             .iter()
             .filter(|(p, _)| p.contains("hasSection"))
@@ -480,7 +476,7 @@ mod tests {
     #[test]
     fn headings_in_code_blocks_ignored() {
         let content = "---\ntitle: Doc\n---\n\n# Real Heading\n\n```python\n# Comment not heading\n```\n\n## Also Real\n";
-        let triples = extract(content, "test.md", &ns()).unwrap();
+        let triples = extract_with_project(content, "test.md", &ns(), None).unwrap();
         let sections: Vec<_> = triples
             .iter()
             .filter(|(p, _)| p.contains("hasSection"))
@@ -497,7 +493,7 @@ mod tests {
         let content =
             "---\ntitle: Doc\n---\n\nSee [the plan](docs/PLAN.md) and [config](src/config.rs).\n";
         let n = ns();
-        let triples = extract(content, "test.md", &n).unwrap();
+        let triples = extract_with_project(content, "test.md", &n, None).unwrap();
         let refs: Vec<_> = triples
             .iter()
             .filter(|(p, _)| p.contains("references"))
@@ -515,7 +511,7 @@ mod tests {
     fn external_links_ignored() {
         let content =
             "---\ntitle: Doc\n---\n\n[Google](https://google.com) and [local](readme.md).\n";
-        let triples = extract(content, "test.md", &ns()).unwrap();
+        let triples = extract_with_project(content, "test.md", &ns(), None).unwrap();
         let refs: Vec<_> = triples
             .iter()
             .filter(|(p, _)| p.contains("references"))
@@ -530,7 +526,7 @@ mod tests {
     fn wikilinks_create_entity_references() {
         let content = "---\ntitle: Doc\n---\n\nRelated to [[signal-engine]] and [[hook system]].\n";
         let n = ns();
-        let triples = extract(content, "test.md", &n).unwrap();
+        let triples = extract_with_project(content, "test.md", &n, None).unwrap();
         let refs: Vec<_> = triples
             .iter()
             .filter(|(p, v)| p.contains("references") && v.contains("entity/"))
@@ -550,7 +546,7 @@ mod tests {
     fn at_mentions_create_document_references() {
         let content =
             "---\ntitle: Doc\n---\n\nSee @.paul/STATE.md and also @src/extract/mod.rs for details.\n";
-        let triples = extract(content, "test.md", &ns()).unwrap();
+        let triples = extract_with_project(content, "test.md", &ns(), None).unwrap();
         let refs: Vec<_> = triples
             .iter()
             .filter(|(p, v)| p.contains("references") && v.contains("document/"))
@@ -561,7 +557,7 @@ mod tests {
     #[test]
     fn email_addresses_not_matched_as_mentions() {
         let content = "---\ntitle: Doc\n---\n\nContact user@email.com for info.\n";
-        let triples = extract(content, "test.md", &ns()).unwrap();
+        let triples = extract_with_project(content, "test.md", &ns(), None).unwrap();
         let refs: Vec<_> = triples
             .iter()
             .filter(|(p, _)| p.contains("references"))
@@ -618,7 +614,7 @@ Reference @src/extract/mod.rs for the sync pipeline.
 Run tests with `cargo test`.
 ";
         let n = ns();
-        let triples = extract(content, "docs/arch.md", &n).unwrap();
+        let triples = extract_with_project(content, "docs/arch.md", &n, None).unwrap();
 
         // Frontmatter
         assert!(triples.iter().any(|(p, v)| p.contains("name") && v.contains("Architecture Decision")));

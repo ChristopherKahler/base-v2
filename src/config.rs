@@ -1,6 +1,5 @@
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result};
 use serde::Deserialize;
 
 // ─── Workspace discovery ─────────────────────────────────────
@@ -271,11 +270,6 @@ impl BaseConfig {
         content.parse::<toml::Table>().ok()
     }
 
-    fn from_file(path: &Path) -> Result<Self> {
-        let content =
-            std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
-        toml::from_str(&content).with_context(|| format!("parsing {}", path.display()))
-    }
 }
 
 /// Deep-merge two TOML tables. Overlay values win; nested tables merge recursively.

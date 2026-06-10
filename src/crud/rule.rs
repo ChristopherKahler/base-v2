@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use oxigraph::sparql::QueryResults;
 
 use crate::config::NamespaceConfig;

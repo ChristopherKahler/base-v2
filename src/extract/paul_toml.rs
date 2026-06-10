@@ -11,8 +11,6 @@ use crate::crud;
 #[derive(Debug, Deserialize)]
 pub struct PaulToml {
     pub name: String,
-    #[serde(default)]
-    pub version: String,
     #[serde(default = "default_status")]
     pub status: String,
     #[serde(default)]
@@ -22,11 +20,7 @@ pub struct PaulToml {
     #[serde(default)]
     pub phase: Option<Phase>,
     #[serde(default)]
-    pub r#loop: Option<Loop>,
-    #[serde(default)]
     pub tags: Vec<String>,
-    #[serde(default)]
-    pub satellite: Option<Satellite>,
 }
 
 fn default_status() -> String {
@@ -51,28 +45,6 @@ pub struct Phase {
     pub name: String,
     #[serde(default)]
     pub status: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct Loop {
-    #[serde(default)]
-    pub plan: Option<String>,
-    #[serde(default = "default_loop_position")]
-    pub position: String,
-}
-
-fn default_loop_position() -> String {
-    "IDLE".into()
-}
-
-#[derive(Debug, Deserialize)]
-pub struct Satellite {
-    #[serde(default = "default_groom")]
-    pub groom: bool,
-}
-
-fn default_groom() -> bool {
-    true
 }
 
 // ─── Scanner ────────────────────────────────────────────────

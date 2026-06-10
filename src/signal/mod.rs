@@ -52,12 +52,18 @@ pub fn run_signals(cwd: &Path, config: &BaseConfig, hook: &str) -> Result<Signal
         Ok(_) => diagnostics.push(format!("<{hook}-pulse:no-match>")),
         Err(e) => eprintln!("base: signal 'pulse' failed: {e}"),
     }
-    match staleness::run(cwd, ns, sig) {
-        Ok(output) if !output.is_empty() => {
-            results.push(SignalResult { name: "staleness".into(), priority: 3, output });
+    // flow_resurface's stale_detection runs the same query with richer output —
+    // when flow resurface is active it is the single source of stale notices.
+    if config.flow.enabled && config.flow.resurface {
+        diagnostics.push(format!("<{hook}-staleness:superseded-by-flow>"));
+    } else {
+        match staleness::run(cwd, ns, sig) {
+            Ok(output) if !output.is_empty() => {
+                results.push(SignalResult { name: "staleness".into(), priority: 3, output });
+            }
+            Ok(_) => diagnostics.push(format!("<{hook}-staleness:no-match>")),
+            Err(e) => eprintln!("base: signal 'staleness' failed: {e}"),
         }
-        Ok(_) => diagnostics.push(format!("<{hook}-staleness:no-match>")),
-        Err(e) => eprintln!("base: signal 'staleness' failed: {e}"),
     }
 
     // Flow resurface signal (gated by [flow] config)

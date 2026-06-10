@@ -18,18 +18,7 @@ pub struct Manifest {
     #[serde(default)]
     pub components: HashMap<String, ComponentEntry>,
     #[serde(default)]
-    pub curated: HashMap<String, CuratedEntry>,
-    #[serde(default)]
     pub update_check: UpdateCheck,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CuratedEntry {
-    pub version: String,
-    pub path: String,
-    #[serde(default)]
-    pub source: String, // e.g. "npm:context-mode"
-    pub installed_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -95,7 +84,6 @@ impl Default for Manifest {
         Self {
             chrisai: ChrisAiSection::default(),
             components: HashMap::new(),
-            curated: HashMap::new(),
             update_check: UpdateCheck::default(),
         }
     }
@@ -452,7 +440,6 @@ mod tests {
                 token: String::new(),
             },
             components,
-            curated: HashMap::new(),
             update_check: UpdateCheck {
                 last_checked: "2026-06-03T15:00:00-05:00".to_string(),
                 ttl_seconds: 604800,

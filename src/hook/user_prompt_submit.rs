@@ -187,11 +187,6 @@ pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Res
 
         // Mark as injected in session state
         session.mark_injected(&domain_def.name, combined_hash);
-
-        // Track sticky domains
-        if domain_def.sticky {
-            session.mark_injected(&domain_def.name, combined_hash);
-        }
     }
 
     // DEVMODE block (Task 2 will populate this fully)

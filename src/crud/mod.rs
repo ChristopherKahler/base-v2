@@ -254,19 +254,19 @@ pub fn repair_edges(cwd: &Path, ns: &NamespaceConfig) -> Result<usize> {
     // 1. Decisions → domain edges (slug format: {domain}.{decision})
     count += repair_entity_edges(
         &store, &pfx, &graph, ns, p,
-        "Decision", "decision", "domain", "hasDecision",
+        "Decision", "domain", "hasDecision",
     )?;
 
     // 2. Milestones → project edges (slug format: {project}.{milestone})
     count += repair_entity_edges(
         &store, &pfx, &graph, ns, p,
-        "Milestone", "milestone", "project", "hasMilestone",
+        "Milestone", "project", "hasMilestone",
     )?;
 
     // 3. Tasks → project edges (slug format: {project}.{task})
     count += repair_entity_edges(
         &store, &pfx, &graph, ns, p,
-        "Task", "task", "project", "hasTask",
+        "Task", "project", "hasTask",
     )?;
 
     crate::store::write_back(&store, &trig_path)?;
@@ -280,7 +280,6 @@ fn repair_entity_edges(
     ns: &NamespaceConfig,
     p: &str,
     type_name: &str,
-    _entity_type: &str,
     parent_type: &str,
     predicate: &str,
 ) -> Result<usize> {

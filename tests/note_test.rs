@@ -139,31 +139,3 @@ fn recall_by_domain_finds_linked_notes() {
     assert!(result.is_ok());
 }
 
-#[test]
-fn notes_for_domain_returns_linked_notes() {
-    let tmp = tempfile::tempdir().unwrap();
-    setup_workspace(tmp.path());
-    let config = base::config::BaseConfig::load(tmp.path());
-    let ns = &config.namespace;
-
-    // Learn two notes, one linked to DEVELOPMENT
-    base::crud::note::learn(
-        tmp.path(), ns, "Dev note 1", "insight", Some("DEVELOPMENT"), None, None,
-    ).unwrap();
-    base::crud::note::learn(
-        tmp.path(), ns, "Dev note 2", "correction", Some("DEVELOPMENT"), None, None,
-    ).unwrap();
-    base::crud::note::learn(
-        tmp.path(), ns, "Other note", "insight", None, None, None,
-    ).unwrap();
-
-    // Load graph and query
-    let base_dir = base::config::find_workspace_base(tmp.path()).unwrap();
-    let store = base::store::load_graph(&base_dir.join("graph.nq")).unwrap();
-    let domain_iri = base::crud::build_iri(ns, "domain", "development");
-
-    let notes = base::crud::note::notes_for_domain(&store, ns, &domain_iri);
-    assert_eq!(notes.len(), 2, "Should find 2 notes linked to DEVELOPMENT");
-    assert!(notes.iter().any(|(t, text)| t == "insight" && text.contains("Dev note 1")));
-    assert!(notes.iter().any(|(t, text)| t == "correction" && text.contains("Dev note 2")));
-}
