@@ -25,8 +25,6 @@ pub struct DomainDef {
     #[serde(default)]
     pub exclude: Vec<String>,
     #[serde(default)]
-    pub sticky: bool,
-    #[serde(default)]
     pub rules: Vec<String>,
     /// External SPARQL query file to run on match (e.g., "icp-context" resolves to queries/icp-context.sparql).
     #[serde(default)]
@@ -126,7 +124,6 @@ pub fn add_trigger(
             file_keywords: Vec::new(),
             paths: Vec::new(),
             exclude: Vec::new(),
-            sticky: false,
             rules: Vec::new(),
             query: None,
             query_format: None,
@@ -183,7 +180,6 @@ pub fn get_domain(cwd: &Path, name: &str) {
         Some(d) => {
             println!("Domain: {}", d.name);
             println!("Mode: {}", d.mode);
-            println!("Sticky: {}", d.sticky);
             if !d.prompt_keywords.is_empty() {
                 println!("Prompt Keywords: {}", d.prompt_keywords.join(", "));
             }

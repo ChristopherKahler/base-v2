@@ -55,23 +55,20 @@ pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Res
         .and_then(|v| v.as_str())
         .unwrap_or("");
 
-    if tool_name == "Read" {
-        if let (Some(offset), Some(limit)) = (extract_offset(event), extract_limit(event)) {
+    if tool_name == "Read"
+        && let (Some(offset), Some(limit)) = (extract_offset(event), extract_limit(event)) {
             // Partial read — inject section-specific AST entities
             for fp in &file_paths {
-                if let Some(fp_str) = fp.to_str() {
-                    if is_source_file(fp_str) {
-                        if let Some(section) =
+                if let Some(fp_str) = fp.to_str()
+                    && is_source_file(fp_str)
+                        && let Some(section) =
                             crud::ast_query::section_entities(cwd, &config.namespace, fp_str, offset, limit)
                         {
                             print!("{}", section.trim_end());
                             data.section_context = true;
                         }
-                    }
-                }
             }
         }
-    }
 
     Ok(data)
 }

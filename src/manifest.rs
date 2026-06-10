@@ -13,6 +13,7 @@ const ACTIVATION_KEY_HASH: &str = "389858f21ff026eb17ed26be72d02929d26c0485cbfe2
 // ─── Manifest Structs ───────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct Manifest {
     pub chrisai: ChrisAiSection,
     #[serde(default)]
@@ -79,15 +80,6 @@ impl Default for UpdateCheck {
     }
 }
 
-impl Default for Manifest {
-    fn default() -> Self {
-        Self {
-            chrisai: ChrisAiSection::default(),
-            components: HashMap::new(),
-            update_check: UpdateCheck::default(),
-        }
-    }
-}
 
 // ─── Manifest I/O ───────────────────────────────────────────
 
@@ -208,20 +200,19 @@ fn read_skill_version(dir: &Path, name: &str) -> Option<String> {
     for path in &candidates {
         if let Ok(content) = std::fs::read_to_string(path) {
             // Parse YAML frontmatter between --- delimiters
-            if content.starts_with("---") {
-                if let Some(end) = content[3..].find("---") {
+            if content.starts_with("---")
+                && let Some(end) = content[3..].find("---") {
                     let frontmatter = &content[3..3 + end];
                     for line in frontmatter.lines() {
                         let line = line.trim();
-                        if line.starts_with("version:") {
-                            let v = line["version:".len()..].trim().trim_matches('"').trim_matches('\'');
+                        if let Some(rest) = line.strip_prefix("version:") {
+                            let v = rest.trim().trim_matches('"').trim_matches('\'');
                             if !v.is_empty() {
                                 return Some(v.to_string());
                             }
                         }
                     }
                 }
-            }
         }
     }
     None
@@ -323,23 +314,19 @@ pub fn check_for_updates(manifest: &mut Manifest) -> Result<Option<String>> {
 
     // Check npm components
     for &(component, package) in NPM_PACKAGES {
-        if let Some(installed) = manifest.components.get(component) {
-            if let Some(remote) = fetch_npm_version(package) {
-                if version_newer(&remote, &installed.version) {
+        if let Some(installed) = manifest.components.get(component)
+            && let Some(remote) = fetch_npm_version(package)
+                && version_newer(&remote, &installed.version) {
                     updates.push(format!("{component} {}→{remote}", installed.version));
                 }
-            }
-        }
     }
 
     // Check BASE via GitHub releases
-    if let Some(installed) = manifest.components.get("base") {
-        if let Some(remote) = fetch_github_version() {
-            if version_newer(&remote, &installed.version) {
+    if let Some(installed) = manifest.components.get("base")
+        && let Some(remote) = fetch_github_version()
+            && version_newer(&remote, &installed.version) {
                 updates.push(format!("base {}→{remote}", installed.version));
             }
-        }
-    }
 
     // Update last_checked
     manifest.update_check.last_checked = chrono::Local::now().to_rfc3339();

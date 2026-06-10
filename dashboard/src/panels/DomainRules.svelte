@@ -79,9 +79,6 @@
           <div class="domain-header">
             <span class="domain-name">{domain.name}</span>
             <span class="mode-badge" class:always={domain.mode === 'always'}>{domain.mode}</span>
-            {#if domain.sticky}
-              <span class="sticky-badge">sticky</span>
-            {/if}
             <span class="spacer"></span>
             <button class="add-btn" on:click={() => { addingTo = addingTo === domain.name ? null : domain.name; newRuleText = ''; }}>
               {addingTo === domain.name ? '✕' : '+ Rule'}
@@ -192,10 +189,6 @@
     text-transform: uppercase;
   }
   .mode-badge.always { background: rgba(0, 202, 83, 0.15); color: var(--green); }
-  .sticky-badge {
-    font-size: 9px; padding: 1px 5px; border-radius: 3px;
-    background: rgba(149, 239, 255, 0.1); color: var(--accent-cyan);
-  }
   .add-btn {
     font-size: 11px; padding: 2px 8px; border-radius: 4px;
     background: var(--surface-03); border: 1px solid var(--border);

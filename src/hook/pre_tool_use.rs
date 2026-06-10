@@ -117,7 +117,7 @@ pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Res
             .unwrap_or("");
         if tool_name == "Write" || tool_name == "Edit" {
             for fp in &file_paths {
-                if fp.to_str().map_or(false, |s| s.ends_with(".md")) {
+                if fp.to_str().is_some_and(|s| s.ends_with(".md")) {
                     output.push_str(MARKDOWN_GUIDANCE);
                     output.push('\n');
                     break;
@@ -127,20 +127,18 @@ pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Res
 
         // ─── AST file map injection (source files) ──────────────
         for fp in &file_paths {
-            if let Some(fp_str) = fp.to_str() {
-                if is_source_file(fp_str) {
+            if let Some(fp_str) = fp.to_str()
+                && is_source_file(fp_str) {
                     // Session dedup: only inject AST map once per file per session
-                    if !session.has_ast_injected(fp_str) {
-                        if let Some(map) = crud::ast_query::file_map_compact(cwd, &config.namespace, fp_str) {
+                    if !session.has_ast_injected(fp_str)
+                        && let Some(map) = crud::ast_query::file_map_compact(cwd, &config.namespace, fp_str) {
                             output.push_str(&map);
                             output.push('\n');
                             session.mark_ast_injected(fp_str);
                             session_dirty = true;
                             data.ast_injected = true;
                         }
-                    }
                 }
-            }
         }
 
         // ─── PAUL context injection (file change history) ───────
@@ -159,11 +157,10 @@ pub fn handle(config: &BaseConfig, cwd: &Path, event: &serde_json::Value) -> Res
         }
 
         // Single save for the whole branch — only when something changed.
-        if session_dirty {
-            if let Some(bd) = base_dir.as_deref() {
+        if session_dirty
+            && let Some(bd) = base_dir.as_deref() {
                 let _ = session.save(bd);
             }
-        }
     }
 
     if !output.is_empty() {
@@ -287,14 +284,13 @@ fn extract_search_term(command: &str) -> Option<String> {
     }
 
     // rg "term"
-    if parts.first().map(|s| *s == "rg").unwrap_or(false) {
-        if let Some(term) = parts.get(1) {
+    if parts.first().map(|s| *s == "rg").unwrap_or(false)
+        && let Some(term) = parts.get(1) {
             let t = term.trim_matches('"').trim_matches('\'');
             if !t.starts_with('-') {
                 return Some(t.to_string());
             }
         }
-    }
 
     None
 }

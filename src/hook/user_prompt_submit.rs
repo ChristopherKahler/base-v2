@@ -568,11 +568,10 @@ fn ensure_domain_sync(config: &BaseConfig, cwd: &Path) {
             let domains_toml = global_dir.join("domains.toml");
             if domains_toml.exists() {
                 let needs_sync = needs_sync_check(&domains_toml, &marker);
-                if needs_sync {
-                    if domain::sync::sync_domains_to_graph(config, &global_dir, None).is_ok() {
+                if needs_sync
+                    && domain::sync::sync_domains_to_graph(config, &global_dir, None).is_ok() {
                         let _ = std::fs::write(&marker, "");
                     }
-                }
             }
         }
     }
@@ -591,11 +590,10 @@ fn ensure_domain_sync(config: &BaseConfig, cwd: &Path) {
     }
 
     let needs_sync = needs_sync_check(&domains_toml, &marker);
-    if needs_sync {
-        if domain::sync::sync_domains_to_graph(config, cwd, None).is_ok() {
+    if needs_sync
+        && domain::sync::sync_domains_to_graph(config, cwd, None).is_ok() {
             let _ = std::fs::write(&marker, "");
         }
-    }
 }
 
 /// Check if a domains.toml is newer than its sync marker.
@@ -651,7 +649,7 @@ fn gather_active_paths(config: &BaseConfig, graph: &Option<oxigraph::store::Stor
         u = config.namespace.uri,
     );
 
-    match crate::store::query(&graph, &sparql) {
+    match crate::store::query(graph, &sparql) {
         Ok(oxigraph::sparql::QueryResults::Solutions(solutions)) => solutions
             .filter_map(|r| r.ok())
             .filter_map(|row| {

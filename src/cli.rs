@@ -497,9 +497,8 @@ pub fn run() {
             }
             ProjectAction::List => { if let Err(e) = crud::project::list(&cwd, &config.namespace) { eprintln!("Error: {e}"); } }
             ProjectAction::Get { slug } => {
-                if let Some(s) = resolve(&cwd, &config.namespace, "project", &slug) {
-                    if let Err(e) = crud::project::get(&cwd, &config.namespace, &s) { eprintln!("Error: {e}"); }
-                }
+                if let Some(s) = resolve(&cwd, &config.namespace, "project", &slug)
+                    && let Err(e) = crud::project::get(&cwd, &config.namespace, &s) { eprintln!("Error: {e}"); }
             }
             ProjectAction::Update { slug, status, blocked_by, next_action } => {
                 if let Some(s) = resolve(&cwd, &config.namespace, "project", &slug) {
@@ -534,9 +533,8 @@ pub fn run() {
                 if let Err(e) = crud::milestone::list(&cwd, &config.namespace, ps.as_deref()) { eprintln!("Error: {e}"); }
             }
             MilestoneAction::Get { slug } => {
-                if let Some(s) = resolve(&cwd, &config.namespace, "milestone", &slug) {
-                    if let Err(e) = crud::milestone::get(&cwd, &config.namespace, &s) { eprintln!("Error: {e}"); }
-                }
+                if let Some(s) = resolve(&cwd, &config.namespace, "milestone", &slug)
+                    && let Err(e) = crud::milestone::get(&cwd, &config.namespace, &s) { eprintln!("Error: {e}"); }
             }
             MilestoneAction::Update { slug, status, description } => {
                 if let Some(s) = resolve(&cwd, &config.namespace, "milestone", &slug) {
@@ -615,9 +613,8 @@ pub fn run() {
             }
             EntityAction::List => { if let Err(e) = crud::entity::list(&cwd, &config.namespace) { eprintln!("Error: {e}"); } }
             EntityAction::Get { slug } => {
-                if let Some(s) = resolve(&cwd, &config.namespace, "entity", &slug) {
-                    if let Err(e) = crud::entity::get(&cwd, &config.namespace, &s) { eprintln!("Error: {e}"); }
-                }
+                if let Some(s) = resolve(&cwd, &config.namespace, "entity", &slug)
+                    && let Err(e) = crud::entity::get(&cwd, &config.namespace, &s) { eprintln!("Error: {e}"); }
             }
             EntityAction::Update { slug, status, description } => {
                 if let Some(s) = resolve(&cwd, &config.namespace, "entity", &slug) {

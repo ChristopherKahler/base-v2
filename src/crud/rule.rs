@@ -17,13 +17,16 @@ pub fn add(
     let domain_slug = crud::slugify(domain_name);
     let domain_iri = crud::build_iri(ns, "domain", &domain_slug);
 
-    // Find next rule index for this domain
+    // Find next rule index for this domain.
+    // CLI rules live in their own IRI namespace (cli-N) — sync rules use
+    // rule/{slug}/{i} and are GC'd/renumbered on every sync, so sharing
+    // that space would let a sync overwrite or delete CLI-added rules.
     let next_index = next_rule_index(cwd, ns, &domain_iri)?;
-    let rule_iri = crud::build_iri(ns, "rule", &format!("{domain_slug}/{next_index}"));
+    let rule_iri = crud::build_iri(ns, "rule", &format!("{domain_slug}/cli-{next_index}"));
     let ws_slug = crud::workspace_slug(cwd);
     let graph = crud::workspace_graph_iri(ns, &ws_slug);
 
-    let escaped = rule_text.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n");
+    let escaped = crud::escape_sparql_literal(rule_text);
 
     // Ensure domain exists
     let ensure_domain = format!(
@@ -38,12 +41,15 @@ pub fn add(
     );
     let _ = crud::load_and_mutate(cwd, ns, &ensure_domain);
 
-    // Insert rule with edge to domain
+    // Insert rule with edge to domain. {p}:index is what next_rule_index
+    // MAXes over — without it every CLI rule would compute index 0 (the
+    // original C3 collision, surviving as a predicate mismatch).
     let sparql = format!(
         "INSERT DATA {{\n\
            GRAPH <{graph}> {{\n\
              <{rule_iri}> rdf:type {p}:Rule ;\n\
                {p}:ruleText \"{escaped}\" ;\n\
+               {p}:index \"{next_index}\" ;\n\
                {p}:priority \"{next_index}\" .\n\
              <{domain_iri}> {p}:hasRule <{rule_iri}> .\n\
            }}\n\
@@ -100,20 +106,24 @@ pub fn remove(cwd: &Path, ns: &NamespaceConfig, domain_name: &str, index: u32) -
     let p = &ns.prefix;
     let domain_slug = crud::slugify(domain_name);
     let domain_iri = crud::build_iri(ns, "domain", &domain_slug);
-    let rule_iri = crud::build_iri(ns, "rule", &format!("{domain_slug}/{index}"));
     let ws_slug = crud::workspace_slug(cwd);
     let graph = crud::workspace_graph_iri(ns, &ws_slug);
 
+    // Match by {p}:index predicate, not constructed IRI — CLI rules live at
+    // rule/{slug}/cli-N and are the only rules carrying {p}:index. Synced
+    // rules are managed by editing domains.toml (sync GC handles them).
     let sparql = format!(
         "DELETE {{\n\
            GRAPH <{graph}> {{\n\
-             <{rule_iri}> ?p ?o .\n\
-             <{domain_iri}> {p}:hasRule <{rule_iri}> .\n\
+             ?rule ?rp ?ro .\n\
+             <{domain_iri}> {p}:hasRule ?rule .\n\
            }}\n\
          }}\n\
          WHERE {{\n\
            GRAPH <{graph}> {{\n\
-             <{rule_iri}> ?p ?o .\n\
+             <{domain_iri}> {p}:hasRule ?rule .\n\
+             ?rule {p}:index \"{index}\" ;\n\
+               ?rp ?ro .\n\
            }}\n\
          }}"
     );

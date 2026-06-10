@@ -96,7 +96,6 @@ mod tests {
             file_keywords: Vec::new(),
             paths: Vec::new(),
             exclude: Vec::new(),
-            sticky: false,
             rules: rules.iter().map(|s| s.to_string()).collect(),
             query: None,
             query_format: None,

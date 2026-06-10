@@ -13,8 +13,7 @@ pub fn is_memory_path(path: &Path) -> bool {
 /// Check if the file is the MEMORY.md index (not an individual memory file).
 pub fn is_memory_index(path: &Path) -> bool {
     path.file_name()
-        .and_then(|f| f.to_str())
-        .map_or(false, |f| f == "MEMORY.md")
+        .and_then(|f| f.to_str()) == Some("MEMORY.md")
 }
 
 /// Parse Claude's memory file content into (name, description, note_type, body).

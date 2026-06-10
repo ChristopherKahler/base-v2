@@ -27,6 +27,12 @@ fn test_vocabulary_loads() {
         "Rule",
         "Document",
         "PaulProject",
+        "Milestone",
+        "FileChange",
+        "AcceptanceCriteria",
+        "AcceptanceCriteriaResult",
+        "LedgerEntry",
+        "OperatorNote",
     ];
     for class in &classes {
         let sparql = format!(
@@ -58,6 +64,17 @@ fn test_vocabulary_loads() {
         "blockedBy",
         "nextAction",
         "revenue",
+        "hasMilestone",
+        "hasFileChange",
+        "hasACResult",
+        "hasTag",
+        "hasSection",
+        "operatorNote",
+        "due",
+        "text",
+        "index",
+        "source",
+        "filesModified",
     ];
     for pred in &predicates {
         let sparql = format!(

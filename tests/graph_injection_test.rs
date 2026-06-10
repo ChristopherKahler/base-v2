@@ -259,3 +259,51 @@ rules = ["Never lie", "Always verify", "NEW RULE added later"]
         second.suppressed
     );
 }
+
+#[test]
+fn sync_gc_removes_stale_synced_rules_keeps_cli_rules() {
+    let tmp = tempfile::tempdir().unwrap();
+    setup_synced_workspace(tmp.path()); // GLOBAL: ["Never lie", "Always verify"]
+    let config = base::config::BaseConfig::load(tmp.path());
+    let ns = &config.namespace;
+
+    // Add a CLI rule (no source marker) — must survive sync GC
+    base::crud::rule::add(tmp.path(), ns, "GLOBAL", "CLI-added rule").unwrap();
+
+    // Change toml rules: drop "Always verify", add "New rule C"
+    let base_dir = tmp.path().join(".base");
+    std::fs::write(
+        base_dir.join("domains.toml"),
+        r#"
+[[domain]]
+name = "GLOBAL"
+mode = "always"
+prompt_keywords = []
+rules = ["Never lie", "New rule C"]
+"#,
+    )
+    .unwrap();
+    base::domain::sync::sync_domains_to_graph(&config, tmp.path(), None).unwrap();
+    // Sync twice — idempotency
+    base::domain::sync::sync_domains_to_graph(&config, tmp.path(), None).unwrap();
+
+    let store = base::store::load_graph(&base_dir.join("graph.nq")).unwrap();
+    let p = &ns.prefix;
+    let u = &ns.uri;
+    let sparql = format!(
+        "PREFIX {p}: <{u}>\nSELECT ?text WHERE {{ GRAPH ?g {{ ?r a {p}:Rule ; {p}:ruleText ?text . }} }}"
+    );
+    let texts: Vec<String> = match store.query(&sparql).unwrap() {
+        oxigraph::sparql::QueryResults::Solutions(sols) => sols
+            .filter_map(|r| r.ok())
+            .filter_map(|row| row.get("text").map(|t| t.to_string()))
+            .collect(),
+        _ => panic!("Expected solutions"),
+    };
+
+    assert!(texts.iter().any(|t| t.contains("Never lie")), "kept synced rule: {texts:?}");
+    assert!(texts.iter().any(|t| t.contains("New rule C")), "new synced rule: {texts:?}");
+    assert!(texts.iter().any(|t| t.contains("CLI-added rule")), "CLI rule survives GC: {texts:?}");
+    assert!(!texts.iter().any(|t| t.contains("Always verify")), "stale synced rule GC'd: {texts:?}");
+    assert_eq!(texts.len(), 3, "exactly 3 rules after double sync (idempotent): {texts:?}");
+}

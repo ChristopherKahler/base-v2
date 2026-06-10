@@ -57,19 +57,19 @@ fn sync_domain_list(
         let prompt_kw_triples: String = domain_def
             .prompt_keywords
             .iter()
-            .map(|kw| format!("      {p}:promptKeyword \"{}\" ;\n", escape_sparql(kw)))
+            .map(|kw| format!("      {p}:promptKeyword \"{}\" ;\n", crud::escape_sparql_literal(kw)))
             .collect();
 
         let file_kw_triples: String = domain_def
             .file_keywords
             .iter()
-            .map(|kw| format!("      {p}:fileKeyword \"{}\" ;\n", escape_sparql(kw)))
+            .map(|kw| format!("      {p}:fileKeyword \"{}\" ;\n", crud::escape_sparql_literal(kw)))
             .collect();
 
         let path_triples: String = domain_def
             .paths
             .iter()
-            .map(|path| format!("      {p}:triggerPath \"{}\" ;\n", escape_sparql(path)))
+            .map(|path| format!("      {p}:triggerPath \"{}\" ;\n", crud::escape_sparql_literal(path)))
             .collect();
 
         let now = crud::now_iso();
@@ -86,14 +86,37 @@ fn sync_domain_list(
                    {p}:updatedAt \"{now}\"^^xsd:dateTime .\n\
                }}\n\
              }}",
-            escape_sparql(&domain_def.name),
-            escape_sparql(&domain_def.mode),
+            crud::escape_sparql_literal(&domain_def.name),
+            crud::escape_sparql_literal(&domain_def.mode),
         );
         store
             .update(&domain_insert)
             .with_context(|| format!("Failed to insert domain '{}'", domain_def.name))?;
 
-        // Insert rules
+        // Garbage-collect this domain's previously SYNCED rules before re-inserting.
+        // Scoped by {p}:source "domains.toml" — rules added via `base rule add`
+        // carry no source marker and MUST survive sync (I9).
+        let rule_gc = format!(
+            "{pfx}\n\
+             DELETE {{\n\
+               GRAPH <{graph}> {{\n\
+                 ?rule ?rp ?ro .\n\
+                 <{domain_iri}> {p}:hasRule ?rule .\n\
+               }}\n\
+             }}\n\
+             WHERE {{\n\
+               GRAPH <{graph}> {{\n\
+                 <{domain_iri}> {p}:hasRule ?rule .\n\
+                 ?rule {p}:source \"domains.toml\" ;\n\
+                   ?rp ?ro .\n\
+               }}\n\
+             }}"
+        );
+        store
+            .update(&rule_gc)
+            .with_context(|| format!("Failed to GC synced rules for domain '{}'", domain_def.name))?;
+
+        // Insert rules (marked with source so the GC above scopes to them next sync)
         for (i, rule_text) in domain_def.rules.iter().enumerate() {
             let rule_iri = crud::build_iri(ns, "rule", &format!("{domain_slug}/{i}"));
             let rule_insert = format!(
@@ -102,11 +125,12 @@ fn sync_domain_list(
                    GRAPH <{graph}> {{\n\
                      <{rule_iri}> rdf:type {p}:Rule ;\n\
                        {p}:ruleText \"{}\" ;\n\
-                       {p}:priority \"{i}\" .\n\
+                       {p}:priority \"{i}\" ;\n\
+                       {p}:source \"domains.toml\" .\n\
                      <{domain_iri}> {p}:hasRule <{rule_iri}> .\n\
                    }}\n\
                  }}",
-                escape_sparql(rule_text),
+                crud::escape_sparql_literal(rule_text),
             );
             store
                 .update(&rule_insert)
@@ -195,7 +219,7 @@ fn sync_carl_decisions(
             let recall_triple = if decision.recall.is_empty() {
                 String::new()
             } else {
-                format!("      {p}:recall \"{}\" ;\n", escape_sparql(&decision.recall))
+                format!("      {p}:recall \"{}\" ;\n", crud::escape_sparql_literal(&decision.recall))
             };
 
             let insert = format!(
@@ -211,8 +235,8 @@ fn sync_carl_decisions(
                      <{domain_iri}> {p}:hasDecision <{dec_iri}> .\n\
                    }}\n\
                  }}",
-                escape_sparql(&decision.decision),
-                escape_sparql(&decision.rationale),
+                crud::escape_sparql_literal(&decision.decision),
+                crud::escape_sparql_literal(&decision.rationale),
             );
             store
                 .update(&insert)
@@ -225,15 +249,6 @@ fn sync_carl_decisions(
 }
 
 // ─── Helpers ────────────────────────────────────────────────
-
-/// Escape special characters for SPARQL string literals.
-fn escape_sparql(s: &str) -> String {
-    s.replace('\\', "\\\\")
-        .replace('"', "\\\"")
-        .replace('\n', "\\n")
-        .replace('\r', "\\r")
-        .replace('\t', "\\t")
-}
 
 #[cfg(test)]
 mod tests {

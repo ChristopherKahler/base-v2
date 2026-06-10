@@ -702,15 +702,14 @@ pub async fn create_decision(
     let rationale = body.rationale.as_deref().unwrap_or("");
 
     let mut domain_triple = String::new();
-    if let Some(ref domain) = body.domain {
-        if !domain.is_empty() {
+    if let Some(ref domain) = body.domain
+        && !domain.is_empty() {
             let domain_slug = crate::crud::slugify(domain);
             let domain_iri = crate::crud::build_iri(ns, "domain", &domain_slug);
             domain_triple = format!("<{iri}> {p}:hasDomain <{domain_iri}> .\n");
         }
-    }
 
-    let mut store = state.store.lock().unwrap();
+    let store = state.store.lock().unwrap();
     let insert = format!(
         "{pfx}\nINSERT DATA {{\n  GRAPH <{graph}> {{\n\
            <{iri}> rdf:type {p}:Decision .\n\
@@ -745,7 +744,7 @@ pub async fn update_decision(
     let ns = &state.config.namespace;
     let p = &ns.prefix;
     let pfx = crate::crud::prefixes(ns);
-    let mut store = state.store.lock().unwrap();
+    let store = state.store.lock().unwrap();
 
     if let Some(ref name) = body.name {
         let u = format!(
@@ -800,7 +799,7 @@ pub async fn delete_decision(
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     let iri = urldecode(&iri);
     let pfx = crate::crud::prefixes(&state.config.namespace);
-    let mut store = state.store.lock().unwrap();
+    let store = state.store.lock().unwrap();
 
     let del = format!(
         "{pfx}\nDELETE {{ GRAPH ?g {{ <{iri}> ?p ?o }} }}\n\
@@ -839,20 +838,18 @@ pub async fn create_reminder(
     let graph = crate::crud::workspace_graph_iri(ns, &crate::crud::workspace_slug(&state.cwd));
 
     let mut extra_triples = String::new();
-    if let Some(ref due) = body.due {
-        if !due.is_empty() {
+    if let Some(ref due) = body.due
+        && !due.is_empty() {
             extra_triples.push_str(&format!("<{iri}> {p}:due \"{due}\" .\n"));
         }
-    }
-    if let Some(ref related) = body.related_to {
-        if !related.is_empty() {
+    if let Some(ref related) = body.related_to
+        && !related.is_empty() {
             let related_slug = crate::crud::slugify(related);
             let related_iri = crate::crud::build_iri(ns, "project", &related_slug);
             extra_triples.push_str(&format!("<{iri}> {p}:relatedTo <{related_iri}> .\n"));
         }
-    }
 
-    let mut store = state.store.lock().unwrap();
+    let store = state.store.lock().unwrap();
     let insert = format!(
         "{pfx}\nINSERT DATA {{\n  GRAPH <{graph}> {{\n\
            <{iri}> rdf:type {p}:Reminder .\n\
@@ -877,7 +874,7 @@ pub async fn complete_reminder(
     let ns = &state.config.namespace;
     let p = &ns.prefix;
     let pfx = crate::crud::prefixes(ns);
-    let mut store = state.store.lock().unwrap();
+    let store = state.store.lock().unwrap();
 
     // Delete old status, insert completed
     let del = format!(
@@ -902,7 +899,7 @@ pub async fn delete_reminder(
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     let iri = urldecode(&iri);
     let pfx = crate::crud::prefixes(&state.config.namespace);
-    let mut store = state.store.lock().unwrap();
+    let store = state.store.lock().unwrap();
 
     let del = format!(
         "{pfx}\nDELETE {{ GRAPH ?g {{ <{iri}> ?p ?o }} }}\n\
@@ -937,7 +934,7 @@ pub async fn update_project_status(
         return Err(StatusCode::BAD_REQUEST);
     }
 
-    let mut store = state.store.lock().unwrap();
+    let store = state.store.lock().unwrap();
 
     let check = format!("{pfx}\nASK {{ GRAPH ?g {{ <{iri}> rdf:type ?t }} }}");
     match store.query(&check) {
@@ -1000,7 +997,6 @@ struct LedgerTomlSession {
     date: Option<String>,
     duration_min: Option<u32>,
     outcome: Option<String>,
-    tasks: Option<u32>,
 }
 
 #[derive(serde::Deserialize)]
@@ -1014,9 +1010,9 @@ fn collect_workspace_roots(primary: &std::path::Path) -> Vec<std::path::PathBuf>
 
     if let Some(home) = dirs::home_dir() {
         let base_toml = home.join(".base-gbl/base.toml");
-        if let Ok(content) = std::fs::read_to_string(&base_toml) {
-            if let Ok(table) = content.parse::<toml::Table>() {
-                if let Some(workspaces) = table.get("workspace").and_then(|v| v.as_array()) {
+        if let Ok(content) = std::fs::read_to_string(&base_toml)
+            && let Ok(table) = content.parse::<toml::Table>()
+                && let Some(workspaces) = table.get("workspace").and_then(|v| v.as_array()) {
                     for ws in workspaces {
                         if let Some(path_str) = ws.get("path").and_then(|v| v.as_str()) {
                             let p = std::path::PathBuf::from(path_str);
@@ -1026,8 +1022,6 @@ fn collect_workspace_roots(primary: &std::path::Path) -> Vec<std::path::PathBuf>
                         }
                     }
                 }
-            }
-        }
     }
 
     roots
@@ -1130,7 +1124,7 @@ fn scan_ledger_files(cwd: &std::path::Path) -> Vec<OpsLedgerEntry> {
 }
 
 pub async fn ops_ledger(
-    State(state): State<Arc<AppState>>,
+    State(_state): State<Arc<AppState>>,
 ) -> Json<Vec<OpsLedgerEntry>> {
     // Read ledger.toml directly from filesystem — no graph sync needed
     let cwd = std::env::current_dir().unwrap_or_default();
@@ -1282,7 +1276,7 @@ pub async fn update_task_status(
         return Err(StatusCode::BAD_REQUEST);
     }
 
-    let mut store = state.store.lock().unwrap();
+    let store = state.store.lock().unwrap();
 
     // Verify entity exists
     let check = format!(
@@ -1367,12 +1361,11 @@ fn urldecode(s: &str) -> String {
             let hi = chars.next().unwrap_or(b'0');
             let lo = chars.next().unwrap_or(b'0');
             let hex = [hi, lo];
-            if let Ok(s) = std::str::from_utf8(&hex) {
-                if let Ok(val) = u8::from_str_radix(s, 16) {
+            if let Ok(s) = std::str::from_utf8(&hex)
+                && let Ok(val) = u8::from_str_radix(s, 16) {
                     result.push(val as char);
                     continue;
                 }
-            }
             result.push('%');
             result.push(hi as char);
             result.push(lo as char);
@@ -1596,14 +1589,12 @@ fn parse_claude_code(days: u32) -> Vec<UsageEvent> {
                 let Ok(val) = serde_json::from_str::<serde_json::Value>(line) else { continue };
 
                 // Extract cwd from any event for project name (first one wins)
-                if !cwd_resolved {
-                    if let Some(cwd) = val.get("cwd").and_then(|c| c.as_str()) {
-                        if !cwd.is_empty() {
+                if !cwd_resolved
+                    && let Some(cwd) = val.get("cwd").and_then(|c| c.as_str())
+                        && !cwd.is_empty() {
                             session_project = resolve_project_name(cwd);
                             cwd_resolved = true;
                         }
-                    }
-                }
 
                 let Some(msg) = val.get("message") else { continue };
                 let Some(usage) = msg.get("usage") else { continue };
@@ -1668,7 +1659,9 @@ fn aggregate_usage(events: &[UsageEvent], days: u32) -> (UsageSummary, Vec<Sessi
     // daily_map: date -> (input, output, cache_read, cache_write, sources, cost)
     let mut daily_map: HashMap<String, (u64, u64, u64, u64, usize, f64)> = HashMap::new();
     // session_map: session_id -> accumulated session data
-    let mut session_map: HashMap<String, (String, String, u64, u64, u64, u64, String, usize)> = HashMap::new();
+    // (provider, start, input, output, cache_read, cache_write, last_ts, events)
+    type SessionAccum = (String, String, u64, u64, u64, u64, String, usize);
+    let mut session_map: HashMap<String, SessionAccum> = HashMap::new();
     // project_map: project -> (provider, total_tokens, cost, event_count, last_active)
     let mut project_map: HashMap<String, (String, u64, f64, usize, String)> = HashMap::new();
 
@@ -1852,16 +1845,15 @@ pub async fn create_task(
 
     let mut extra_triples = String::new();
     extra_triples.push_str(&format!("<{task_iri}> {p}:priority \"{priority}\" .\n"));
-    if let Some(ref desc) = body.description {
-        if !desc.is_empty() {
+    if let Some(ref desc) = body.description
+        && !desc.is_empty() {
             extra_triples.push_str(&format!(
                 "           <{task_iri}> {p}:description \"{}\" .\n",
                 desc.replace('"', "\\\"").replace('\n', "\\n")
             ));
         }
-    }
 
-    let mut store = state.store.lock().unwrap();
+    let store = state.store.lock().unwrap();
 
     let insert = format!(
         "{pfx}\nINSERT DATA {{\n  GRAPH <{graph}> {{\n\
@@ -1902,7 +1894,7 @@ pub async fn update_task(
     let p = &ns.prefix;
     let pfx = crate::crud::prefixes(ns);
 
-    let mut store = state.store.lock().unwrap();
+    let store = state.store.lock().unwrap();
 
     // Verify entity exists
     let check = format!(
@@ -1978,7 +1970,7 @@ pub async fn delete_task(
     let ns = &state.config.namespace;
     let pfx = crate::crud::prefixes(ns);
 
-    let mut store = state.store.lock().unwrap();
+    let store = state.store.lock().unwrap();
 
     // Verify entity exists
     let check = format!(
@@ -2037,7 +2029,7 @@ pub async fn create_entity(
         domain_triple = format!("<{entity_iri}> {p}:hasDomain <{domain_iri}> .\n");
     }
 
-    let mut store = state.store.lock().unwrap();
+    let store = state.store.lock().unwrap();
 
     let insert = format!(
         "{pfx}\nINSERT DATA {{\n  GRAPH <{graph}> {{\n\
@@ -2065,7 +2057,6 @@ pub struct DomainInfo {
     pub prompt_keywords: Vec<String>,
     pub paths: Vec<String>,
     pub rules: Vec<String>,
-    pub sticky: bool,
 }
 
 pub async fn get_domains(
@@ -2106,7 +2097,6 @@ pub async fn get_domains(
             prompt_keywords: d.prompt_keywords.clone(),
             paths: d.paths.clone(),
             rules,
-            sticky: d.sticky,
         }
     }).collect();
     Json(result)
@@ -2134,7 +2124,7 @@ pub async fn add_rule(
     let ws_slug = crate::crud::workspace_slug(&state.cwd);
     let graph = crate::crud::workspace_graph_iri(ns, &ws_slug);
 
-    let mut store = state.store.lock().unwrap();
+    let store = state.store.lock().unwrap();
 
     let insert = format!(
         "{pfx}\nINSERT DATA {{\n  GRAPH <{graph}> {{\n\
@@ -2168,7 +2158,7 @@ pub async fn delete_rule(
     let rule_slug = crate::crud::slugify(&body.text);
     let rule_iri = crate::crud::build_iri(ns, "rule", &rule_slug);
 
-    let mut store = state.store.lock().unwrap();
+    let store = state.store.lock().unwrap();
 
     let delete = format!(
         "{pfx}\nDELETE WHERE {{ GRAPH ?g {{ <{rule_iri}> ?p ?o }} }};\n\
@@ -2262,7 +2252,7 @@ fn build_nodes_sparql(ns: &crate::config::NamespaceConfig) -> String {
 
 /// Build edges SPARQL (extracted for reuse by export)
 fn build_edges_sparql(ns: &crate::config::NamespaceConfig) -> String {
-    let p = &ns.prefix;
+    let _p = &ns.prefix;
     let pfx = crate::crud::prefixes(ns);
     format!(
         "{pfx}\nSELECT ?s ?p ?o WHERE {{\n\

@@ -86,14 +86,13 @@ pub fn extract_ledger(
         if let Some(ref plan) = entry.plan {
             body.push_str(&format!("    <{iri}> {p}:plan \"{}\" .\n", crud::escape_sparql_literal(plan)));
         }
-        if let Some(ref note) = entry.note {
-            if !note.is_empty() {
+        if let Some(ref note) = entry.note
+            && !note.is_empty() {
                 body.push_str(&format!(
                     "    <{iri}> {p}:note \"{}\" .\n",
                     crud::escape_sparql_literal(note)
                 ));
             }
-        }
 
         // Link to project — read name from paul.toml, fall back to workspace slug
         let project_name = read_paul_toml_name(cwd)

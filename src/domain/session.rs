@@ -239,8 +239,7 @@ mod tests {
     fn bracket_disabled_returns_moderate() {
         let mut cfg = default_bracket_config();
         cfg.enabled = false;
-        let mut state = SessionState::default();
-        state.prompt_count = 1;
+        let mut state = SessionState { prompt_count: 1, ..Default::default() };
         assert_eq!(state.bracket(&cfg), Bracket::Moderate);
         state.prompt_count = 50;
         assert_eq!(state.bracket(&cfg), Bracket::Moderate);
@@ -249,10 +248,9 @@ mod tests {
     #[test]
     fn force_refresh_on_depleted_interval() {
         let cfg = default_bracket_config(); // refresh_interval=5, depleted_until=20
-        let mut state = SessionState::default();
+        let mut state = SessionState { prompt_count: 3, ..Default::default() };
 
         // FRESH — no refresh
-        state.prompt_count = 3;
         assert!(!state.should_force_refresh(&cfg));
 
         // MODERATE — no refresh

@@ -273,6 +273,7 @@ pub fn repair_edges(cwd: &Path, ns: &NamespaceConfig) -> Result<usize> {
     Ok(count)
 }
 
+#[allow(clippy::too_many_arguments)] // internal helper, params are query fragments
 fn repair_entity_edges(
     store: &Store,
     pfx: &str,
@@ -338,7 +339,7 @@ fn repair_entity_edges(
 
             if store.update(&insert).is_ok() {
                 edges_added += 1;
-                let short_slug = slug.split('.').last().unwrap_or(slug);
+                let short_slug = slug.split('.').next_back().unwrap_or(slug);
                 println!("  + {parent_slug} → {predicate} → {short_slug}");
             }
         }

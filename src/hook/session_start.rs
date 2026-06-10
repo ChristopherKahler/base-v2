@@ -102,7 +102,7 @@ pub fn handle(config: &BaseConfig, cwd: &Path) -> Result<()> {
     // Flow protocol injection — also in fallback path
     if config.flow.enabled && config.flow.protocol {
         if !output.is_empty() {
-            print!("\n");
+            println!();
         }
         print!("{}", crate::hook::flow::protocol_block());
     }
@@ -110,7 +110,7 @@ pub fn handle(config: &BaseConfig, cwd: &Path) -> Result<()> {
     // Diagnostics: always emitted at end of output
     if !diagnostics.is_empty() {
         if !output.is_empty() || (config.flow.enabled && config.flow.protocol) {
-            print!("\n");
+            println!();
         }
         print!("{}", diagnostics.join("\n"));
     }
@@ -152,11 +152,10 @@ fn check_and_banner() {
     let _ = manifest.save();
 
     // If updates found and not activated, show banner
-    if let Ok(Some(ref pending)) = result {
-        if !activated {
+    if let Ok(Some(ref pending)) = result
+        && !activated {
             print!("{}", crate::manifest::format_update_banner(pending));
         }
-    }
 }
 
 /// Scan all registered workspaces for paul.toml files and ingest into graph. Fail-silent.

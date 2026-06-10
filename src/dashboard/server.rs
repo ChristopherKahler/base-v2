@@ -33,9 +33,9 @@ pub async fn start(port: u16, cwd: PathBuf) {
     // Read registered workspaces from BASE's own registry (~/.base-gbl/base.toml)
     if let Some(home) = dirs::home_dir() {
         let base_toml = home.join(".base-gbl/base.toml");
-        if let Ok(content) = std::fs::read_to_string(&base_toml) {
-            if let Ok(table) = content.parse::<toml::Table>() {
-                if let Some(workspaces) = table.get("workspace").and_then(|v| v.as_array()) {
+        if let Ok(content) = std::fs::read_to_string(&base_toml)
+            && let Ok(table) = content.parse::<toml::Table>()
+                && let Some(workspaces) = table.get("workspace").and_then(|v| v.as_array()) {
                     for ws in workspaces {
                         if let Some(path_str) = ws.get("path").and_then(|v| v.as_str()) {
                             let candidate = PathBuf::from(path_str).join(".base/graph.nq");
@@ -45,8 +45,6 @@ pub async fn start(port: u16, cwd: PathBuf) {
                         }
                     }
                 }
-            }
-        }
 
         // Also check global tier
         let global_trig = home.join(".base-gbl/graph.nq");

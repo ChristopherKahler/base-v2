@@ -482,7 +482,7 @@ fn install_scripts(binary_path: &Path, global_dir: &Path) -> Result<()> {
     for entry in std::fs::read_dir(source_dir)? {
         let entry = entry?;
         let path = entry.path();
-        if path.extension().map_or(false, |ext| ext == "py") {
+        if path.extension().is_some_and(|ext| ext == "py") {
             let dest = scripts_dest.join(entry.file_name());
             std::fs::copy(&path, &dest)?;
             count += 1;
@@ -518,12 +518,10 @@ fn seed_system_rules(global_dir: &Path) -> Result<()> {
         "SELECT ?text WHERE {{ GRAPH ?g {{ <{domain_iri}> {p}:hasRule ?r . ?r {p}:ruleText ?text . FILTER(CONTAINS(?text, \"Markdown Ontology Protocol\")) }} }}"
     );
 
-    let already_exists = if let Ok(results) = crate::crud::load_and_query(global_dir, ns, &check) {
-        if let oxigraph::sparql::QueryResults::Solutions(solutions) = results {
-            solutions.filter_map(|r| r.ok()).next().is_some()
-        } else {
-            false
-        }
+    let already_exists = if let Ok(oxigraph::sparql::QueryResults::Solutions(solutions)) =
+        crate::crud::load_and_query(global_dir, ns, &check)
+    {
+        solutions.filter_map(|r| r.ok()).next().is_some()
     } else {
         false
     };

@@ -238,3 +238,188 @@ ops:noteType      rdf:type rdf:Property ;
 ops:relatedTo     rdf:type rdf:Property ;
                   rdfs:domain ops:Note ;
                   rdfs:comment "Edge from Note to any entity (domain, project, person)" .
+
+# ─── PAUL extraction classes (synced 2026-06-10, AUDIT I8) ──
+
+ops:Milestone     rdf:type rdfs:Class ;
+                  rdfs:label "Milestone" ;
+                  rdfs:comment "A milestone (epic) within a project" .
+
+ops:FileChange    rdf:type rdfs:Class ;
+                  rdfs:label "FileChange" ;
+                  rdfs:comment "A file created/modified by a PAUL plan" .
+
+ops:AcceptanceCriteria rdf:type rdfs:Class ;
+                  rdfs:label "AcceptanceCriteria" ;
+                  rdfs:comment "An acceptance criterion defined in a PAUL plan" .
+
+ops:AcceptanceCriteriaResult rdf:type rdfs:Class ;
+                  rdfs:label "AcceptanceCriteriaResult" ;
+                  rdfs:comment "Pass/fail result for an acceptance criterion" .
+
+ops:LedgerEntry   rdf:type rdfs:Class ;
+                  rdfs:label "LedgerEntry" ;
+                  rdfs:comment "A PAUL session ledger entry (plan/apply/unify action)" .
+
+ops:OperatorNote  rdf:type rdfs:Class ;
+                  rdfs:label "OperatorNote" ;
+                  rdfs:comment "A note authored by the operator in document frontmatter" .
+
+# ─── Predicates synced from code usage (2026-06-10, AUDIT I8) ──
+
+ops:hasMilestone  rdf:type rdf:Property ;
+                  rdfs:comment "Project → Milestone edge" .
+
+ops:hasTag        rdf:type rdf:Property ;
+                  rdfs:comment "Entity → tag string" .
+
+ops:hasSection    rdf:type rdf:Property ;
+                  rdfs:comment "Document → section heading" .
+
+ops:hasAC         rdf:type rdf:Property ;
+                  rdfs:comment "Plan → AcceptanceCriteria edge" .
+
+ops:hasACResult   rdf:type rdf:Property ;
+                  rdfs:comment "Summary → AcceptanceCriteriaResult edge" .
+
+ops:hasFileChange rdf:type rdf:Property ;
+                  rdfs:comment "Plan/Summary → FileChange edge" .
+
+ops:operatorNote  rdf:type rdf:Property ;
+                  rdfs:comment "Entity → operator-authored note text" .
+
+ops:due           rdf:type rdf:Property ;
+                  rdfs:range xsd:dateTime ;
+                  rdfs:comment "Reminder due timestamp" .
+
+ops:text          rdf:type rdf:Property ;
+                  rdfs:comment "Generic text content" .
+
+ops:index         rdf:type rdf:Property ;
+                  rdfs:comment "Stable numeric index (CLI-added rules)" .
+
+ops:source        rdf:type rdf:Property ;
+                  rdfs:comment "Provenance marker (e.g. \"domains.toml\" on synced rules)" .
+
+ops:sourceFile    rdf:type rdf:Property ;
+                  rdfs:comment "Source file path for code/document entities" .
+
+ops:targetFile    rdf:type rdf:Property ;
+                  rdfs:comment "File path a FileChange applies to" .
+
+ops:filePath      rdf:type rdf:Property ;
+                  rdfs:comment "File path attribute" .
+
+ops:documentType  rdf:type rdf:Property ;
+                  rdfs:comment "Document classification (plan, summary, context, ...)" .
+
+ops:lastExtracted rdf:type rdf:Property ;
+                  rdfs:range xsd:dateTime ;
+                  rdfs:comment "When extraction last touched this entity" .
+
+ops:lastMentioned rdf:type rdf:Property ;
+                  rdfs:range xsd:dateTime ;
+                  rdfs:comment "Flow mention tracking: last mention timestamp" .
+
+ops:mentionCount  rdf:type rdf:Property ;
+                  rdfs:range xsd:integer ;
+                  rdfs:comment "Flow mention tracking: occurrence count" .
+
+ops:resurfaceAt   rdf:type rdf:Property ;
+                  rdfs:range xsd:dateTime ;
+                  rdfs:comment "Flow: when to resurface this item" .
+
+ops:action        rdf:type rdf:Property ;
+                  rdfs:comment "LedgerEntry action (plan, apply, unify)" .
+
+ops:phase         rdf:type rdf:Property ;
+                  rdfs:comment "PAUL phase number/name" .
+
+ops:plan          rdf:type rdf:Property ;
+                  rdfs:comment "PAUL plan identifier" .
+
+ops:planType      rdf:type rdf:Property ;
+                  rdfs:comment "PAUL plan type (execute, tdd, research)" .
+
+ops:wave          rdf:type rdf:Property ;
+                  rdfs:comment "PAUL execution wave number" .
+
+ops:autonomous    rdf:type rdf:Property ;
+                  rdfs:range xsd:boolean ;
+                  rdfs:comment "PAUL plan has no checkpoints" .
+
+ops:dependsOn     rdf:type rdf:Property ;
+                  rdfs:comment "Plan → prior plan dependency" .
+
+ops:affects       rdf:type rdf:Property ;
+                  rdfs:comment "Summary → future phases needing this context" .
+
+ops:subsystem     rdf:type rdf:Property ;
+                  rdfs:comment "Primary subsystem categorization" .
+
+ops:duration      rdf:type rdf:Property ;
+                  rdfs:comment "Recorded duration" .
+
+ops:actualDuration rdf:type rdf:Property ;
+                  rdfs:comment "Measured duration after completion" .
+
+ops:started       rdf:type rdf:Property ;
+                  rdfs:range xsd:dateTime ;
+                  rdfs:comment "Start timestamp" .
+
+ops:completed     rdf:type rdf:Property ;
+                  rdfs:range xsd:dateTime ;
+                  rdfs:comment "Completion timestamp" .
+
+ops:timestamp     rdf:type rdf:Property ;
+                  rdfs:range xsd:dateTime ;
+                  rdfs:comment "Generic event timestamp" .
+
+ops:criterion     rdf:type rdf:Property ;
+                  rdfs:comment "AcceptanceCriteria text" .
+
+ops:changeType    rdf:type rdf:Property ;
+                  rdfs:comment "FileChange kind (created, modified, deleted)" .
+
+ops:fromPlan      rdf:type rdf:Property ;
+                  rdfs:comment "Entity → originating PAUL plan" .
+
+ops:gitRange      rdf:type rdf:Property ;
+                  rdfs:comment "Commit range associated with a plan" .
+
+ops:goal          rdf:type rdf:Property ;
+                  rdfs:comment "Stated goal text" .
+
+ops:purpose       rdf:type rdf:Property ;
+                  rdfs:comment "Stated purpose text" .
+
+ops:note          rdf:type rdf:Property ;
+                  rdfs:comment "Attached note text" .
+
+ops:notes         rdf:type rdf:Property ;
+                  rdfs:comment "Attached notes text (plural form used by extractors)" .
+
+ops:accomplishments rdf:type rdf:Property ;
+                  rdfs:comment "Summary accomplishments text" .
+
+ops:deviation     rdf:type rdf:Property ;
+                  rdfs:comment "Summary deviation entry" .
+
+ops:impact        rdf:type rdf:Property ;
+                  rdfs:comment "Recorded impact statement" .
+
+ops:nextPhaseReadiness rdf:type rdf:Property ;
+                  rdfs:comment "Summary next-phase readiness text" .
+
+ops:references    rdf:type rdf:Property ;
+                  rdfs:comment "Entity → referenced resource" .
+
+ops:scopeLimit    rdf:type rdf:Property ;
+                  rdfs:comment "Plan scope limit entry" .
+
+ops:tasksCompleted rdf:type rdf:Property ;
+                  rdfs:range xsd:integer ;
+                  rdfs:comment "Count of tasks completed in a plan" .
+
+ops:filesModified rdf:type rdf:Property ;
+                  rdfs:comment "Files a PAUL plan modifies" .
